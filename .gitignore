@@ -45,3 +45,17 @@ data/corbeille/
 
 # Windows
 desktop.ini
+
+# 🧪 Fichiers de test et documentation temporaire
+test_*.html
+TEST_*.md
+NOUVEAU_*.md
+VALIDATION_*.md
+debug_*.js
+temp_*.json
+
+# 📊 Fichiers de logs et cache développement
+*.log.txt
+debug.log
+error.log
+cache/

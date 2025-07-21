@@ -6,6 +6,7 @@ import bcrypt from 'bcrypt';
 import validator from 'validator';
 import dotenv from 'dotenv';
 import fs from 'fs/promises';
+import fsSync from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
@@ -58,7 +59,7 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "blob:"],
+      imgSrc: ["'self'", "data:", "blob:", "http://localhost:3001"], // Permettre les images du serveur local
       fontSrc: ["'self'"],
       connectSrc: ["'self'"],
       mediaSrc: ["'self'"],
@@ -69,7 +70,8 @@ app.use(helmet({
       upgradeInsecureRequests: [],
     },
   },
-  crossOriginEmbedderPolicy: false
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: "cross-origin" } // Permettre les ressources cross-origin
 }));
 
 // Rate limiting global
@@ -159,6 +161,8 @@ app.use('/images', express.static(path.join(__dirname, 'public', 'images'), {
   setHeaders: (res, filePath) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Cache-Control', 'public, max-age=86400'); // 1 jour
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin'); // Permettre l'accès cross-origin
+    res.setHeader('Access-Control-Allow-Origin', '*'); // Permettre l'accès depuis n'importe quelle origine
   }
 }));
 
@@ -167,28 +171,104 @@ app.use('/solutions', express.static(path.join(__dirname, 'public', 'solutions')
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Cache-Control', 'private, no-cache');
     res.setHeader('Content-Disposition', 'inline');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin'); // Permettre l'accès cross-origin
+    res.setHeader('Access-Control-Allow-Origin', '*'); // Permettre l'accès depuis n'importe quelle origine
   }
 }));
 
 // Configuration de multer avec sécurité renforcée
-const storage = multer.diskStorage({
+
+// Configuration pour les images avec calcul dynamique du numéro
+const imageStorage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, 'public/solutions/')
+    cb(null, 'public/images/cubes/')
   },
-  filename: function (req, file, cb) {
-    // Nettoyer le nom de fichier
-    const sanitizedName = file.originalname
-      .replace(/[^a-zA-Z0-9\-_.]/g, '_')
-      .replace(/_+/g, '_')
-      .toLowerCase();
-    
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + '-' + sanitizedName);
+  filename: async function (req, file, cb) {
+    try {
+      // Récupérer l'ID du cube depuis le formulaire pour nommer directement
+      const cubeId = req.body.cubeId || `temp-${Date.now()}`;
+      const extension = path.extname(file.originalname).toLowerCase();
+      
+      // Calculer le prochain numéro d'image pour ce cube de manière dynamique
+      if (!req.nextImageNumber) {
+        req.nextImageNumber = await getNextImageNumber(cubeId);
+      }
+      
+      // Utiliser et incrémenter le compteur
+      const imageNumber = req.nextImageNumber;
+      req.nextImageNumber++;
+      
+      // Nouveau format: {id_cube}-{numéro_de_limage}.{extension}
+      const filename = `${cubeId}-${imageNumber}${extension}`;
+      console.log('📸 Nom fichier généré:', filename);
+      cb(null, filename);
+    } catch (error) {
+      console.error('Erreur génération nom fichier image:', error);
+      cb(error);
+    }
   }
 });
 
-// Validation des fichiers
-const fileFilter = (req, file, cb) => {
+// Validation des fichiers images
+const imageFileFilter = (req, file, cb) => {
+  // Vérifier l'extension
+  const allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+  const fileExtension = path.extname(file.originalname).toLowerCase();
+  
+  if (!allowedExtensions.includes(fileExtension)) {
+    return cb(new Error('Type de fichier non autorisé. Seules les images (JPG, PNG, GIF, WebP) sont acceptées.'));
+  }
+  
+  // Vérifier le type MIME
+  const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+  if (!allowedMimeTypes.includes(file.mimetype)) {
+    return cb(new Error('Type MIME non autorisé.'));
+  }
+  
+  cb(null, true);
+};
+
+const uploadImages = multer({ 
+  storage: imageStorage,
+  fileFilter: imageFileFilter,
+  limits: {
+    fileSize: MAX_FILE_SIZE,
+    files: 10
+  }
+});
+
+// Configuration pour les PDFs avec calcul dynamique du numéro
+const pdfStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, 'public/solutions/pdf/')
+  },
+  filename: async function (req, file, cb) {
+    try {
+      // Récupérer l'ID du cube depuis le formulaire pour nommer directement
+      const cubeId = req.body.cubeId || `temp-${Date.now()}`;
+      
+      // Calculer le prochain numéro de PDF pour ce cube de manière dynamique
+      if (!req.nextPdfNumber) {
+        req.nextPdfNumber = await getNextPdfNumber(cubeId);
+      }
+      
+      // Utiliser et incrémenter le compteur
+      const pdfNumber = req.nextPdfNumber;
+      req.nextPdfNumber++;
+      
+      // Nouveau format: {id_cube}-{numéro_du_pdf}.pdf
+      const filename = `${cubeId}-${pdfNumber}.pdf`;
+      console.log('📄 Nom fichier PDF généré:', filename);
+      cb(null, filename);
+    } catch (error) {
+      console.error('Erreur génération nom fichier PDF:', error);
+      cb(error);
+    }
+  }
+});
+
+// Validation des fichiers PDF
+const pdfFileFilter = (req, file, cb) => {
   // Vérifier l'extension
   const allowedExtensions = ['.pdf'];
   const fileExtension = path.extname(file.originalname).toLowerCase();
@@ -206,9 +286,9 @@ const fileFilter = (req, file, cb) => {
   cb(null, true);
 };
 
-const upload = multer({ 
-  storage: storage,
-  fileFilter: fileFilter,
+const uploadPdf = multer({ 
+  storage: pdfStorage,
+  fileFilter: pdfFileFilter,
   limits: {
     fileSize: MAX_FILE_SIZE,
     files: 1
@@ -251,6 +331,50 @@ const ensureDataFile = async () => {
   }
 };
 
+// Fonction pour obtenir le prochain numéro d'image pour un cube
+const getNextImageNumber = async (cubeId) => {
+  try {
+    const imagesDir = path.join(__dirname, 'public', 'images', 'cubes');
+    const files = await fs.readdir(imagesDir);
+    
+    // Filtrer les fichiers qui correspondent au pattern {cubeId}-{number}.{ext}
+    const imageNumbers = files
+      .filter(file => file.startsWith(`${cubeId}-`) && /\.(jpg|jpeg|png|gif|webp)$/i.test(file))
+      .map(file => {
+        const match = file.match(new RegExp(`^${cubeId}-(\\d+)\\.`));
+        return match ? parseInt(match[1]) : 0;
+      })
+      .filter(num => !isNaN(num));
+    
+    return imageNumbers.length > 0 ? Math.max(...imageNumbers) + 1 : 1;
+  } catch (error) {
+    console.error('Erreur lors du calcul du numéro d\'image:', error);
+    return 1;
+  }
+};
+
+// Fonction pour obtenir le prochain numéro de PDF pour un cube
+const getNextPdfNumber = async (cubeId) => {
+  try {
+    const pdfsDir = path.join(__dirname, 'public', 'solutions', 'pdf');
+    const files = await fs.readdir(pdfsDir);
+    
+    // Filtrer les fichiers qui correspondent au pattern {cubeId}-{number}.pdf
+    const pdfNumbers = files
+      .filter(file => file.startsWith(`${cubeId}-`) && file.endsWith('.pdf'))
+      .map(file => {
+        const match = file.match(new RegExp(`^${cubeId}-(\\d+)\\.pdf$`));
+        return match ? parseInt(match[1]) : 0;
+      })
+      .filter(num => !isNaN(num));
+    
+    return pdfNumbers.length > 0 ? Math.max(...pdfNumbers) + 1 : 1;
+  } catch (error) {
+    console.error('Erreur lors du calcul du numéro de PDF:', error);
+    return 1;
+  }
+};
+
 const readCubes = async () => {
   try {
     await ensureDataFile();
@@ -285,10 +409,67 @@ app.get('/api/cubes', async (req, res) => {
   }
 });
 
+// GET /api/cubes/:id/files - Récupérer les fichiers associés à un cube
+app.get('/api/cubes/:id/files', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (!validator.isNumeric(id)) {
+      return res.status(400).json({ error: 'ID invalide' });
+    }
+
+    // Récupérer les images
+    const imagesDir = path.join(__dirname, 'public', 'images', 'cubes');
+    const pdfsDir = path.join(__dirname, 'public', 'solutions', 'pdf');
+    
+    let imageFiles = [];
+    let pdfFiles = [];
+    
+    try {
+      const allImageFiles = await fs.readdir(imagesDir);
+      imageFiles = allImageFiles
+        .filter(file => file.startsWith(`${id}-`) && /\.(jpg|jpeg|png|gif|webp)$/i.test(file))
+        .map(file => ({
+          filename: file,
+          url: `/images/cubes/${file}`,
+          number: parseInt(file.match(new RegExp(`^${id}-(\\d+)\\.`))?.[1] || '0')
+        }))
+        .sort((a, b) => a.number - b.number);
+    } catch (error) {
+      console.log('Dossier images non trouvé ou vide');
+    }
+    
+    try {
+      const allPdfFiles = await fs.readdir(pdfsDir);
+      pdfFiles = allPdfFiles
+        .filter(file => file.startsWith(`${id}-`) && file.endsWith('.pdf'))
+        .map(file => ({
+          filename: file,
+          url: `/solutions/pdf/${file}`,
+          number: parseInt(file.match(new RegExp(`^${id}-(\\d+)\\.pdf$`))?.[1] || '0')
+        }))
+        .sort((a, b) => a.number - b.number);
+    } catch (error) {
+      console.log('Dossier PDFs non trouvé ou vide');
+    }
+    
+    res.json({
+      images: imageFiles,
+      pdfs: pdfFiles,
+      nextImageNumber: imageFiles.length > 0 ? Math.max(...imageFiles.map(f => f.number)) + 1 : 1,
+      nextPdfNumber: pdfFiles.length > 0 ? Math.max(...pdfFiles.map(f => f.number)) + 1 : 1
+    });
+  } catch (error) {
+    console.error('Erreur lors de la récupération des fichiers:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
 // POST /api/cubes - Créer un nouveau cube
 app.post('/api/cubes', async (req, res) => {
   try {
     const { 
+      id,  // Ajout de l'ID optionnel
       name, 
       type, 
       brand, 
@@ -328,8 +509,17 @@ app.post('/api/cubes', async (req, res) => {
       }
 
       const cubes = await readCubes();
+      
+      // Utiliser l'ID fourni ou en générer un nouveau
+      const cubeId = id || Date.now().toString();
+      
+      // Vérifier que l'ID n'existe pas déjà si un ID est fourni
+      if (id && cubes.some(cube => cube.id === id)) {
+        return res.status(409).json({ error: 'Un cube avec cet ID existe déjà' });
+      }
+      
       const newCube = {
-        id: Date.now().toString(),
+        id: cubeId,
         name,
         type: type || '',
         brand: brand || '',
@@ -411,8 +601,14 @@ app.put('/api/cubes/:id', async (req, res) => {
       return res.status(404).json({ error: 'Cube non trouvé' });
     }
     
-    // Valider les mises à jour
-    const allowedFields = ['name', 'scramble', 'time', 'date', 'moves', 'image', 'solution'];
+    // Valider les mises à jour - autoriser tous les champs du nouveau format
+    const allowedFields = [
+      'name', 'type', 'brand', 'dateObtained', 'difficulty', 'personalBest', 
+      'averageTime', 'solved', 'images', 'solutionType', 'solutionLink', 
+      'notes', 'tags', 'solutionLinks', 'solutionFiles',
+      // Anciens champs pour rétrocompatibilité
+      'scramble', 'time', 'date', 'moves', 'image', 'solution'
+    ];
     const validUpdates = {};
     
     for (const [key, value] of Object.entries(updates)) {
@@ -486,18 +682,110 @@ app.delete('/api/cubes/:id', async (req, res) => {
   }
 });
 
+// POST /api/upload/images - Upload de plusieurs images
+app.post('/api/upload/images', uploadLimiter, uploadImages.array('images', 10), async (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'Aucun fichier fourni' });
+    }
+    
+    const cubeId = req.body.cubeId;
+    if (!cubeId) {
+      return res.status(400).json({ error: 'ID du cube requis' });
+    }
+    
+    console.log('📁 Upload de', req.files.length, 'fichier(s)');
+    console.log('📋 Cube ID reçu:', cubeId);
+    
+    // Générer les URLs des images uploadées
+    const imageUrls = req.files.map(file => `/images/cubes/${file.filename}`);
+    
+    console.log('🖼️ Images créées:', imageUrls);
+    
+    res.json({ 
+      imageUrls,
+      message: `${req.files.length} image(s) uploadée(s) avec succès`,
+      count: req.files.length 
+    });
+  } catch (error) {
+    console.error('Erreur lors de l\'upload d\'images:', error);
+    res.status(500).json({ error: 'Erreur lors de l\'upload des images' });
+  }
+});
+
 // POST /api/upload/solution - Upload d'une solution PDF
-app.post('/api/upload/solution', uploadLimiter, upload.single('solution'), async (req, res) => {
+app.post('/api/upload/solution', uploadLimiter, uploadPdf.single('solution'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'Aucun fichier fourni' });
     }
     
+    const cubeId = req.body.cubeId;
+    if (!cubeId) {
+      return res.status(400).json({ error: 'ID du cube requis' });
+    }
+    
+    console.log('📄 Upload PDF:', req.file.filename);
+    console.log('📋 Cube ID reçu:', cubeId);
+    
     const filename = req.file.filename;
-    res.json({ filename, message: 'Solution uploadée avec succès' });
+    const solutionUrl = `/solutions/pdf/${filename}`;
+    
+    res.json({ 
+      filename, 
+      solutionUrl,
+      originalName: req.file.originalname,
+      message: 'Solution uploadée avec succès' 
+    });
   } catch (error) {
     console.error('Erreur lors de l\'upload:', error);
     res.status(500).json({ error: 'Erreur lors de l\'upload' });
+  }
+});
+
+// DELETE /api/upload/image - Supprimer une image
+app.delete('/api/upload/image', async (req, res) => {
+  try {
+    const { imagePath } = req.body;
+    
+    if (!imagePath) {
+      return res.status(400).json({ error: 'Chemin de l\'image requis' });
+    }
+    
+    const fullPath = path.join(__dirname, 'public', 'images', imagePath);
+    
+    if (fsSync.existsSync(fullPath)) {
+      await moveToTrash(fullPath, 'images');
+      res.json({ message: 'Image supprimée avec succès' });
+    } else {
+      res.status(404).json({ error: 'Image non trouvée' });
+    }
+  } catch (error) {
+    console.error('Erreur lors de la suppression de l\'image:', error);
+    res.status(500).json({ error: 'Erreur lors de la suppression de l\'image' });
+  }
+});
+
+// DELETE /api/upload/solution - Supprimer une solution PDF
+app.delete('/api/upload/solution', async (req, res) => {
+  try {
+    const { solutionPath } = req.body;
+    
+    if (!solutionPath) {
+      return res.status(400).json({ error: 'Chemin de la solution requis' });
+    }
+    
+    const fullPath = path.join(__dirname, 'public', 'solutions', 'pdf', solutionPath);
+    
+    if (fsSync.existsSync(fullPath)) {
+      await moveToTrash(fullPath, 'solutions');
+      res.json({ message: 'Solution supprimée avec succès' });
+    } else {
+      res.status(404).json({ error: 'Solution non trouvée' });
+    }
+  } catch (error) {
+    console.error('Erreur lors de la suppression de la solution:', error);
+    res.status(500).json({ error: 'Erreur lors de la suppression de la solution' });
   }
 });
 
@@ -512,8 +800,14 @@ app.use((error, req, res, next) => {
     if (error.code === 'LIMIT_FILE_SIZE') {
       return res.status(400).json({ error: 'Fichier trop volumineux (max 10MB)' });
     }
+    if (error.code === 'LIMIT_FILE_COUNT') {
+      return res.status(400).json({ error: 'Trop de fichiers (max 10 images)' });
+    }
   }
-  res.status(500).json({ error: error.message });
+  if (error.message) {
+    return res.status(400).json({ error: error.message });
+  }
+  res.status(500).json({ error: 'Erreur serveur' });
 });
 
 // Démarrage du serveur

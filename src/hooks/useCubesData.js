@@ -33,28 +33,7 @@ export const useCubesData = () => {
     try {
       const newCube = await cubesService.addCube(cubeData);
       
-      // Si le cube a des images temporaires, les renommer avec l'ID réel
-      if (newCube.images && newCube.images.length > 0) {
-        const hasTemporaryImages = newCube.images.some(img => img.includes('temp-'));
-        if (hasTemporaryImages) {
-          try {
-            const renameResult = await uploadService.renameImages(newCube.images, newCube.id);
-            // Mettre à jour le cube avec les nouveaux noms d'images
-            const updatedCube = await cubesService.updateCube(newCube.id, { 
-              ...newCube, 
-              images: renameResult.imageUrls 
-            });
-            setCubes(prev => [...prev, updatedCube]);
-            return updatedCube;
-          } catch (renameError) {
-            console.error('Erreur lors du renommage des images:', renameError);
-            // Même si le renommage échoue, on garde le cube
-            setCubes(prev => [...prev, newCube]);
-            return newCube;
-          }
-        }
-      }
-      
+      // Plus besoin de renommage, les images sont déjà nommées correctement
       setCubes(prev => [...prev, newCube]);
       return newCube;
     } catch (err) {

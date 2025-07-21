@@ -56,295 +56,383 @@ const CubeForm = () => {
   }, [cubes]);
 
   useEffect(() => {
-    if (isEditMode && existingCube) {
-      // Normaliser les données pour la compatibilité avec les anciens formats
-      const normalizedCube = {
-        ...existingCube,
-        // Convertir imageUrl vers images si nécessaire
-        images: existingCube.images || (existingCube.imageUrl ? [existingCube.imageUrl] : []),
-        // Normaliser solved (peut être isSolved dans les anciens formats)
-        solved: existingCube.solved !== undefined ? existingCube.solved : existingCube.isSolved || false,
-        // S'assurer que tags existe
-        tags: existingCube.tags || [],
-        // Convertir l'ancien format vers le nouveau
-        solutionLinks: existingCube.solutionLinks || (existingCube.solutionLink && existingCube.solutionType !== 'pdf' ? [existingCube.solutionLink] : []),
-        solutionFiles: existingCube.solutionFiles || (existingCube.solutionPdfLink ? [{ path: existingCube.solutionPdfLink, name: existingCube.solutionPdfLink.split('/').pop().replace(/\.[^/.]+$/, '') }] : [])
-          .map(file => {
-            // Normaliser vers le nouveau format objet si c'est encore une string
-            if (typeof file === 'string') {
-              return { path: file, name: file.split('/').pop().replace(/\.[^/.]+$/, '') };
-            }
-            return file;
-          })
-      };
-      
-      setFormData(normalizedCube);
-    }
+		if (isEditMode && existingCube) {
+			// Normaliser les données pour la compatibilité avec les anciens formats
+			const normalizedCube = {
+				...existingCube,
+				// Convertir imageUrl vers images si nécessaire
+				images: existingCube.images || (existingCube.imageUrl ? [existingCube.imageUrl] : []),
+				// Normaliser solved (peut être isSolved dans les anciens formats)
+				solved: existingCube.solved !== undefined ? existingCube.solved : existingCube.isSolved || false,
+				// S'assurer que tags existe
+				tags: existingCube.tags || [],
+				// Convertir l'ancien format vers le nouveau
+				solutionLinks:
+					existingCube.solutionLinks ||
+					(existingCube.solutionLink && existingCube.solutionType !== 'pdf' ? [existingCube.solutionLink] : []),
+				solutionFiles:
+					existingCube.solutionFiles ||
+					(existingCube.solutionPdfLink
+						? [
+								{
+									path: existingCube.solutionPdfLink,
+									name: existingCube.solutionPdfLink
+										.split('/')
+										.pop()
+										.replace(/\.[^/.]+$/, ''),
+								},
+						  ]
+						: []
+					).map((file) => {
+						// Normaliser vers le nouveau format objet si c'est encore une string
+						if (typeof file === 'string') {
+							return {
+								path: file,
+								name: file
+									.split('/')
+									.pop()
+									.replace(/\.[^/.]+$/, ''),
+							};
+						}
+						return file;
+					}),
+			};
+
+			setFormData(normalizedCube);
+
+			// Récupérer les fichiers actuels depuis le serveur pour avoir la liste à jour
+			if (existingCube.id) {
+				loadCubeFiles(existingCube.id);
+			}
+		}
   }, [isEditMode, existingCube]);
 
+  // Fonction pour charger les fichiers existants d'un cube
+  const loadCubeFiles = async (cubeId) => {
+		try {
+			const fileInfo = await uploadService.getCubeFiles(cubeId);
+			console.log('📁 Fichiers trouvés pour le cube', cubeId, ':', fileInfo);
+
+			// Mettre à jour les images dans formData avec les fichiers trouvés
+			const imageUrls = fileInfo.images.map((img) => img.url);
+			const pdfData = fileInfo.pdfs.map((pdf) => ({
+				path: pdf.url,
+				name: `PDF ${pdf.number}`, // Nom par défaut basé sur le numéro
+			}));
+
+			setFormData((prev) => ({
+				...prev,
+				images: imageUrls,
+				solutionFiles: pdfData,
+			}));
+		} catch (error) {
+			console.error('Erreur lors du chargement des fichiers:', error);
+		}
+  };
+
   if (authLoading || cubesLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    );
+		return (
+			<div className='flex items-center justify-center min-h-64'>
+				<div className='animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600'></div>
+			</div>
+		);
   }
 
   if (!isAdmin) {
-    return <Navigate to="/login" state={{ from: { pathname: location.pathname } }} replace />;
+		return <Navigate to='/login' state={{ from: { pathname: location.pathname } }} replace />;
   }
 
   if (isEditMode && !existingCube) {
-    return <Navigate to="/admin" replace />;
+		return <Navigate to='/admin' replace />;
   }
 
   const handleInputChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value
-    }));
+		const { name, value, type, checked } = e.target;
+		setFormData((prev) => ({
+			...prev,
+			[name]: type === 'checkbox' ? checked : value,
+		}));
   };
 
   const handleAddTag = (tag = null) => {
-    const tagToAdd = tag || tagInput.trim();
-    if (tagToAdd && !formData.tags.includes(tagToAdd)) {
-      setFormData(prev => ({
-        ...prev,
-        tags: [...prev.tags, tagToAdd]
-      }));
-      setTagInput('');
-      setShowTagSuggestions(false);
-    }
+		const tagToAdd = tag || tagInput.trim();
+		if (tagToAdd && !formData.tags.includes(tagToAdd)) {
+			setFormData((prev) => ({
+				...prev,
+				tags: [...prev.tags, tagToAdd],
+			}));
+			setTagInput('');
+			setShowTagSuggestions(false);
+		}
   };
 
   const removeTag = (tagToRemove) => {
-    setFormData(prev => ({
-      ...prev,
-      tags: prev.tags.filter(tag => tag !== tagToRemove)
-    }));
+		setFormData((prev) => ({
+			...prev,
+			tags: prev.tags.filter((tag) => tag !== tagToRemove),
+		}));
   };
 
   const formatTime = (timeString) => {
-    if (!timeString) return '';
-    
-    // Si c'est déjà au bon format (min:sec), on le garde
-    if (/^\d+:\d{2}$/.test(timeString)) {
-      return timeString;
-    }
-    
-    // Extraire les chiffres
-    const numbers = timeString.match(/\d+/g);
-    if (!numbers) return timeString;
-    
-    if (numbers.length === 1) {
-      // Un seul nombre, on assume que ce sont des secondes
-      const seconds = parseInt(numbers[0]);
-      const minutes = Math.floor(seconds / 60);
-      const remainingSeconds = seconds % 60;
-      return minutes > 0 ? `${minutes}:${remainingSeconds.toString().padStart(2, '0')}` : `0:${remainingSeconds.toString().padStart(2, '0')}`;
-    } else if (numbers.length >= 2) {
-      // Deux nombres ou plus, on assume min:sec
-      return `${numbers[0]}:${numbers[1].padStart(2, '0')}`;
-    }
-    
-    return timeString;
+		if (!timeString) return '';
+
+		// Si c'est déjà au bon format (min:sec), on le garde
+		if (/^\d+:\d{2}$/.test(timeString)) {
+			return timeString;
+		}
+
+		// Extraire les chiffres
+		const numbers = timeString.match(/\d+/g);
+		if (!numbers) return timeString;
+
+		if (numbers.length === 1) {
+			// Un seul nombre, on assume que ce sont des secondes
+			const seconds = parseInt(numbers[0]);
+			const minutes = Math.floor(seconds / 60);
+			const remainingSeconds = seconds % 60;
+			return minutes > 0 ? `${minutes}:${remainingSeconds.toString().padStart(2, '0')}` : `0:${remainingSeconds.toString().padStart(2, '0')}`;
+		} else if (numbers.length >= 2) {
+			// Deux nombres ou plus, on assume min:sec
+			return `${numbers[0]}:${numbers[1].padStart(2, '0')}`;
+		}
+
+		return timeString;
   };
 
   const handleTimeChange = (e, field) => {
-    const { value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
+		const { value } = e.target;
+		setFormData((prev) => ({
+			...prev,
+			[field]: value,
+		}));
   };
 
   const handleTimeBlur = (e, field) => {
-    const { value } = e.target;
-    const formattedTime = formatTime(value);
-    setFormData(prev => ({
-      ...prev,
-      [field]: formattedTime
-    }));
+		const { value } = e.target;
+		const formattedTime = formatTime(value);
+		setFormData((prev) => ({
+			...prev,
+			[field]: formattedTime,
+		}));
   };
 
-  const filteredTags = availableTags.filter(tag => 
-    tag.toLowerCase().includes(tagInput.toLowerCase()) && 
-    !formData.tags.includes(tag)
-  );
+  const filteredTags = availableTags.filter((tag) => tag.toLowerCase().includes(tagInput.toLowerCase()) && !formData.tags.includes(tag));
 
-  // Gestion des uploads d'images
+  // Gestion des uploads d'images avec nouveau système de nommage
   const handleImageUpload = async (e) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
+		const files = e.target.files;
+		if (!files || files.length === 0) return;
 
-    console.log('🔄 Upload de', files.length, 'image(s)');
-    setUploadingImages(true);
-    try {
-      // Utiliser l'ID existant du cube ou générer un ID temporaire pour le nommage
-      const cubeId = isEditMode ? id : `temp-${Date.now()}`;
-      console.log('📋 Cube ID utilisé:', cubeId);
-      
-      const result = await uploadService.uploadImages(files, cubeId);
-      console.log('✅ Résultat upload:', result);
-      
-      // Ajouter les nouvelles images à la liste existante
-      const newImages = [...formData.images, ...result.imageUrls];
-      setFormData(prev => ({
-        ...prev,
-        images: newImages
-      }));
-      console.log('📷 Images mises à jour:', newImages);
-    } catch (error) {
-      console.error('❌ Erreur upload:', error);
-      alert('Erreur lors de l\'upload des images: ' + error.message);
-    } finally {
-      setUploadingImages(false);
-      // Reset l'input file
-      e.target.value = '';
-    }
+		console.log('🔄 Upload de', files.length, 'image(s)');
+		setUploadingImages(true);
+		try {
+			// Pour un nouveau cube, générer un ID définitif maintenant
+			let cubeId;
+			if (isEditMode) {
+				cubeId = id;
+			} else {
+				// Générer l'ID définitif maintenant pour le nommage cohérent
+				cubeId = Date.now().toString();
+				// Mettre à jour l'ID dans le formData pour qu'il soit utilisé lors de la sauvegarde
+				setFormData((prev) => ({
+					...prev,
+					id: cubeId,
+				}));
+			}
+
+			console.log('📋 Cube ID utilisé:', cubeId);
+
+			const result = await uploadService.uploadImages(files, cubeId);
+			console.log('✅ Résultat upload:', result);
+
+			// Ajouter les nouvelles images à la liste existante
+			const newImages = [...formData.images, ...result.imageUrls];
+			setFormData((prev) => ({
+				...prev,
+				images: newImages,
+			}));
+			console.log('📷 Images mises à jour:', newImages);
+		} catch (error) {
+			console.error('❌ Erreur upload:', error);
+			alert("Erreur lors de l'upload des images: " + error.message);
+		} finally {
+			setUploadingImages(false);
+			// Reset l'input file
+			e.target.value = '';
+		}
   };
 
   // Supprimer une image
   const handleImageDelete = async (imageIndex, imagePath) => {
-    try {
-      // Supprimer le fichier du serveur seulement si c'est un fichier local
-      if (imagePath.startsWith('/images/cubes/')) {
-        await uploadService.deleteImage(imagePath);
-      }
-      
-      // Retirer l'image de la liste
-      const newImages = formData.images.filter((_, index) => index !== imageIndex);
-      setFormData(prev => ({
-        ...prev,
-        images: newImages
-      }));
-    } catch (error) {
-      console.error('Erreur lors de la suppression:', error);
-      // Même en cas d'erreur côté serveur, on retire l'image de la liste
-      const newImages = formData.images.filter((_, index) => index !== imageIndex);
-      setFormData(prev => ({
-        ...prev,
-        images: newImages
-      }));
-    }
+		try {
+			// Supprimer le fichier du serveur seulement si c'est un fichier local
+			if (imagePath.startsWith('/images/cubes/')) {
+				// Extraire juste la partie relative pour le serveur (ex: "cubes/filename.jpg")
+				const relativePath = imagePath.replace('/images/', '');
+				await uploadService.deleteImage(relativePath);
+			}
+
+			// Retirer l'image de la liste
+			const newImages = formData.images.filter((_, index) => index !== imageIndex);
+			setFormData((prev) => ({
+				...prev,
+				images: newImages,
+			}));
+		} catch (error) {
+			console.error('Erreur lors de la suppression:', error);
+			// Même en cas d'erreur côté serveur, on retire l'image de la liste
+			const newImages = formData.images.filter((_, index) => index !== imageIndex);
+			setFormData((prev) => ({
+				...prev,
+				images: newImages,
+			}));
+		}
   };
 
-  // Gestion de l'upload de solution PDF
+  // Gestion de l'upload de solution PDF avec nouveau système de nommage
   const handleSolutionUpload = async (e) => {
-    const files = Array.from(e.target.files);
-    if (files.length === 0) return;
+		const files = Array.from(e.target.files);
+		if (files.length === 0) return;
 
-    setUploadingSolution(true);
-    try {
-      const cubeId = formData.id || 'temp';
-      const uploadPromises = files.map(file => uploadService.uploadSolution(file, cubeId));
-      const results = await Promise.all(uploadPromises);
-      
-      console.log('Solutions uploadées:', results);
-      
-      // Créer des objets avec path et nom par défaut (nom original du fichier)
-      const newSolutionFiles = results.map((result, index) => ({
-        path: result.solutionUrl,
-        name: files[index].name.replace(/\.[^/.]+$/, '') // Enlever l'extension
-      }));
-      
-      setFormData(prev => ({
-        ...prev,
-        solutionFiles: [...(prev.solutionFiles || []), ...newSolutionFiles]
-      }));
-    } catch (error) {
-      alert('Erreur lors de l\'upload des solutions: ' + error.message);
-    } finally {
-      setUploadingSolution(false);
-      // Reset l'input file
-      e.target.value = '';
-    }
+		setUploadingSolution(true);
+		try {
+			// Pour un nouveau cube, utiliser l'ID déjà défini ou le générer
+			let cubeId;
+			if (isEditMode) {
+				cubeId = id;
+			} else {
+				// Utiliser l'ID déjà défini dans formData ou en générer un nouveau
+				cubeId = formData.id || Date.now().toString();
+				// Mettre à jour l'ID dans le formData
+				if (!formData.id) {
+					setFormData((prev) => ({
+						...prev,
+						id: cubeId,
+					}));
+				}
+			}
+
+			console.log('📋 Cube ID pour PDF:', cubeId);
+
+			// Traiter chaque fichier PDF individuellement pour respecter le nouveau nommage
+			for (const file of files) {
+				const result = await uploadService.uploadSolution(file, cubeId);
+				console.log('✅ PDF uploadé:', result);
+
+				// Ajouter le nouveau PDF à la liste avec nom basé sur le fichier original
+				const newPdfFile = {
+					path: result.solutionUrl,
+					name: result.originalName ? result.originalName.replace(/\.[^/.]+$/, '') : file.name.replace(/\.[^/.]+$/, ''),
+				};
+
+				setFormData((prev) => ({
+					...prev,
+					solutionFiles: [...(prev.solutionFiles || []), newPdfFile],
+				}));
+			}
+
+			console.log('📄 Tous les PDFs traités');
+		} catch (error) {
+			console.error('❌ Erreur upload PDF:', error);
+			alert("Erreur lors de l'upload des solutions: " + error.message);
+		} finally {
+			setUploadingSolution(false);
+			// Reset l'input file
+			e.target.value = '';
+		}
   };
 
   // Supprimer une solution PDF
   const handleDeleteSolution = async (solutionFile) => {
-    if (!confirm('Êtes-vous sûr de vouloir supprimer cette solution PDF ?')) {
-      return;
-    }
+		if (!confirm('Êtes-vous sûr de vouloir supprimer cette solution PDF ?')) {
+			return;
+		}
 
-    try {
-      const pathToDelete = typeof solutionFile === 'string' ? solutionFile : solutionFile.path;
-      await uploadService.deleteSolution(pathToDelete);
-      setFormData(prev => ({
-        ...prev,
-        solutionFiles: (prev.solutionFiles || []).filter(file => {
-          const filePath = typeof file === 'string' ? file : file.path;
-          return filePath !== pathToDelete;
-        })
-      }));
-      console.log('Solution PDF supprimée');
-    } catch (error) {
-      console.error('Erreur suppression solution:', error);
-      alert('Erreur lors de la suppression de la solution');
-    }
+		try {
+			const pathToDelete = typeof solutionFile === 'string' ? solutionFile : solutionFile.path;
+			await uploadService.deleteSolution(pathToDelete);
+			setFormData((prev) => ({
+				...prev,
+				solutionFiles: (prev.solutionFiles || []).filter((file) => {
+					const filePath = typeof file === 'string' ? file : file.path;
+					return filePath !== pathToDelete;
+				}),
+			}));
+			console.log('Solution PDF supprimée');
+		} catch (error) {
+			console.error('Erreur suppression solution:', error);
+			alert('Erreur lors de la suppression de la solution');
+		}
   };
 
   // Ajouter un lien de solution
   const handleAddSolutionLink = () => {
-    if (!newSolutionLink.trim()) return;
-    
-    setFormData(prev => ({
-      ...prev,
-      solutionLinks: [...(prev.solutionLinks || []), newSolutionLink.trim()]
-    }));
-    setNewSolutionLink('');
+		if (!newSolutionLink.trim()) return;
+
+		setFormData((prev) => ({
+			...prev,
+			solutionLinks: [...(prev.solutionLinks || []), newSolutionLink.trim()],
+		}));
+		setNewSolutionLink('');
   };
 
   // Supprimer un lien de solution
   const handleDeleteSolutionLink = (linkToDelete) => {
-    setFormData(prev => ({
-      ...prev,
-      solutionLinks: (prev.solutionLinks || []).filter(link => link !== linkToDelete)
-    }));
+		setFormData((prev) => ({
+			...prev,
+			solutionLinks: (prev.solutionLinks || []).filter((link) => link !== linkToDelete),
+		}));
   };
 
   // Renommer une solution PDF
   const handleRenameSolution = (index, newName) => {
-    setFormData(prev => ({
-      ...prev,
-      solutionFiles: (prev.solutionFiles || []).map((file, i) => {
-        if (i === index) {
-          return typeof file === 'string' 
-            ? { path: file, name: newName }
-            : { ...file, name: newName };
-        }
-        return file;
-      })
-    }));
+		setFormData((prev) => ({
+			...prev,
+			solutionFiles: (prev.solutionFiles || []).map((file, i) => {
+				if (i === index) {
+					return typeof file === 'string' ? { path: file, name: newName } : { ...file, name: newName };
+				}
+				return file;
+			}),
+		}));
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    setIsSubmitting(true);
+		e.preventDefault();
+		setIsSubmitting(true);
 
-    try {
-      const dataToSave = {
-        ...formData,
-        // S'assurer que les tableaux existent
-        solutionLinks: formData.solutionLinks || [],
-        solutionFiles: formData.solutionFiles || []
-      };
+		try {
+			const dataToSave = {
+				...formData,
+				// S'assurer que les tableaux existent
+				solutionLinks: formData.solutionLinks || [],
+				solutionFiles: formData.solutionFiles || [],
+			};
 
-      if (isEditMode) {
-        await updateCube(id, dataToSave);
-      } else {
-        await addCube(dataToSave);
-      }
+			console.log('📝 Données à sauvegarder:', {
+				id: dataToSave.id,
+				name: dataToSave.name,
+				images: dataToSave.images,
+				solutionFiles: dataToSave.solutionFiles,
+				isEditMode,
+			});
 
-      navigate('/admin');
-    } catch (error) {
-      console.error('Erreur lors de la sauvegarde:', error);
-      // Optionnel: afficher un message d'erreur à l'utilisateur
-      alert('Erreur lors de la sauvegarde. Veuillez réessayer.');
-    } finally {
-      setIsSubmitting(false);
-    }
+			if (isEditMode) {
+				console.log('✏️ Mode édition - mise à jour du cube:', id);
+				await updateCube(id, dataToSave);
+			} else {
+				console.log('➕ Mode création - ajout du cube avec ID:', dataToSave.id);
+				await addCube(dataToSave);
+			}
+
+			navigate('/admin');
+		} catch (error) {
+			console.error('❌ Erreur lors de la sauvegarde:', error);
+			// Optionnel: afficher un message d'erreur à l'utilisateur
+			alert('Erreur lors de la sauvegarde. Veuillez réessayer.');
+		} finally {
+			setIsSubmitting(false);
+		}
   };
 
   return (
