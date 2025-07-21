@@ -32,6 +32,47 @@ Une application web moderne développée avec ReactJS pour gérer et organiser v
 
 ## 🚀 Installation et utilisation
 
+### 🐳 Méthode Docker (Recommandée)
+La méthode la plus simple pour démarrer rapidement :
+
+```bash
+# Cloner le repository
+git clone https://github.com/votre-username/rubiiks.git
+cd rubiiks
+
+# Démarrage rapide avec Docker
+npm run docker:prod
+
+# Ou commandes Docker Compose
+docker-compose up -d    # Démarrage
+docker-compose down     # Arrêt
+docker-compose logs -f  # Logs en temps réel
+```
+
+### 🌐 Accès à l'application
+- **Production (nginx)** : http://localhost:8080
+- **API directe** : http://localhost:3001
+
+### 📦 Données persistantes
+Les données sont automatiquement sauvegardées dans des volumes Docker :
+- `rubiiks-data` : Base de données JSON
+- `rubiiks-images` : Images uploadées  
+- `rubiiks-pdfs` : PDFs de solutions
+
+### 🔧 Commandes Docker utiles
+```bash
+# Status des conteneurs
+docker-compose ps
+
+# Reconstruction après modifications
+docker-compose up -d --build
+
+# Nettoyage complet
+npm run docker:clean
+```
+
+### 📦 Installation manuelle
+
 ### Prérequis
 - Node.js (version 16 ou supérieure)
 - npm ou yarn

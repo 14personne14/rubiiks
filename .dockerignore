@@ -1,0 +1,107 @@
+# ===============================
+# 🐳 DOCKERIGNORE - RUBIIKS
+# ===============================
+# Fichiers et dossiers à exclure du contexte Docker
+
+# ===============================
+# 📁 DOSSIERS DE DÉVELOPPEMENT
+# ===============================
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ===============================
+# 🔧 FICHIERS DE BUILD ET CACHE
+# ===============================
+dist
+build
+.vite
+.cache
+.tmp
+.temp
+
+# ===============================
+# 🗂️ DONNÉES ET UPLOADS
+# ===============================
+# Fichiers de données (seront créés dans le container)
+data/cubes.json
+data/corbeille/*
+
+# Images uploadées (volumes Docker)
+public/images/cubes/*.jpg
+public/images/cubes/*.jpeg
+public/images/cubes/*.png
+public/images/cubes/*.gif
+public/images/cubes/*.webp
+
+# PDFs uploadés (volumes Docker)
+public/solutions/pdf/*.pdf
+
+# ===============================
+# 🔐 SÉCURITÉ ET ENVIRONNEMENT
+# ===============================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# ===============================
+# 🛠️ OUTILS DE DÉVELOPPEMENT
+# ===============================
+# Git
+.git
+.gitignore
+
+# IDEs et éditeurs
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ===============================
+# 📋 DOCUMENTATION ET TESTS
+# ===============================
+README.md
+SECURITY.md
+SECURITY_AUDIT.md
+CONTRIBUTING.md
+LICENSE
+*.md
+
+# ===============================
+# 🐳 DOCKER ET CI/CD
+# ===============================
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# ===============================
+# 📦 LOGS ET TEMPORAIRES
+# ===============================
+logs
+*.log
+pids
+*.pid
+*.seed
+*.pid.lock
+lib-cov
+coverage
+.nyc_output
+.grunt
+bower_components
+.lock-wscript
+build/Release
+.npm
+.eslintcache
+.node_repl_history
+*.tgz
+.yarn-integrity
+.next

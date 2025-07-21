@@ -176,6 +176,19 @@ app.use('/solutions', express.static(path.join(__dirname, 'public', 'solutions')
   }
 }));
 
+// Servir les fichiers statiques buildés par Vite (pour Docker)
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(path.join(__dirname, 'dist'), {
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('.html')) {
+        res.setHeader('Cache-Control', 'no-cache');
+      } else {
+        res.setHeader('Cache-Control', 'public, max-age=31536000'); // 1 an pour les assets
+      }
+    }
+  }));
+}
+
 // Configuration de multer avec sécurité renforcée
 
 // Configuration pour les images avec calcul dynamique du numéro
@@ -793,6 +806,17 @@ app.delete('/api/upload/solution', async (req, res) => {
 app.post('/api/auth/login', authLimiter, validateAuth, async (req, res) => {
   res.json({ success: true, message: 'Authentification réussie' });
 });
+
+// Route catch-all pour React Router (SPA) - doit être en dernier
+if (process.env.NODE_ENV === 'production') {
+  app.get('*', (req, res) => {
+    // Éviter les routes API
+    if (req.path.startsWith('/api/')) {
+      return res.status(404).json({ error: 'Route API non trouvée' });
+    }
+    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+  });
+}
 
 // Gestion des erreurs de multer
 app.use((error, req, res, next) => {

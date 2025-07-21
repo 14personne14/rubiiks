@@ -1,0 +1,110 @@
+# ===============================
+# 🐳 DOCKER COMPOSE - RUBIIKS
+# ===============================
+# Configuration complète pour l'application Rubiiks
+
+services:
+  # ===============================
+  # 🎯 APPLICATION RUBIIKS
+  # ===============================
+  rubiiks-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: rubiiks-app
+    restart: unless-stopped
+    
+    # Variables d'environnement
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH:-$2b$10$kZk8qN0.GEQLcU6EOUSp7eleKilxe4feLxFWBRa7901eT3huGUkje}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173,http://localhost:8080}
+      - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB:-10}
+    
+    # Ports exposés
+    ports:
+      - "3001:3001"
+    
+    # Volumes persistants
+    volumes:
+      # Données persistantes
+      - rubiiks-data:/app/data
+      # Images uploadées
+      - rubiiks-images:/app/public/images/cubes
+      # PDFs de solutions
+      - rubiiks-pdfs:/app/public/solutions/pdf
+      # Corbeille
+      - rubiiks-trash:/app/data/corbeille
+    
+    # Limits des ressources
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+    
+    # Réseau
+    networks:
+      - rubiiks-network
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "node", "-e", "const http = require('http'); const options = { hostname: 'localhost', port: 3001, path: '/api/cubes', timeout: 2000 }; const req = http.request(options, (res) => { process.exit(res.statusCode === 200 ? 0 : 1); }); req.on('error', () => process.exit(1)); req.end();"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ===============================
+  # 🌐 REVERSE PROXY (OPTIONNEL)
+  # ===============================
+  nginx:
+    image: nginx:alpine
+    container_name: rubiiks-nginx
+    restart: unless-stopped
+    
+    ports:
+      - "8080:80"
+    
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - rubiiks-images:/app/public/images/cubes:ro
+      - rubiiks-pdfs:/app/public/solutions/pdf:ro
+    
+    depends_on:
+      - rubiiks-app
+    
+    networks:
+      - rubiiks-network
+    
+    # Commentez ce service si vous n'avez pas besoin de nginx
+
+# ===============================
+# 📦 VOLUMES PERSISTANTS
+# ===============================
+volumes:
+  rubiiks-data:
+    driver: local
+    name: rubiiks-data
+  rubiiks-images:
+    driver: local
+    name: rubiiks-images
+  rubiiks-pdfs:
+    driver: local
+    name: rubiiks-pdfs
+  rubiiks-trash:
+    driver: local
+    name: rubiiks-trash
+
+# ===============================
+# 🌐 RÉSEAUX
+# ===============================
+networks:
+  rubiiks-network:
+    driver: bridge
+    name: rubiiks-network

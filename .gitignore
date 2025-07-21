@@ -48,6 +48,16 @@ desktop.ini
 
 # 🧪 Fichiers de test et documentation temporaire
 test_*.html
+
+# 🐳 Docker - Ne pas commiter les volumes et données de conteneurs
+docker-compose.override.yml
+.docker/
+volumes/
+
+# 🔧 Scripts et fichiers temporaires locaux
+*.tmp
+*.temp
+.cache/
 TEST_*.md
 NOUVEAU_*.md
 VALIDATION_*.md
