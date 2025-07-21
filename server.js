@@ -59,7 +59,7 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "blob:", "http://localhost:3001"], // Permettre les images du serveur local
+      imgSrc: ["'self'", "data:", "blob:"], // Images servies via le même domaine
       fontSrc: ["'self'"],
       connectSrc: ["'self'"],
       mediaSrc: ["'self'"],

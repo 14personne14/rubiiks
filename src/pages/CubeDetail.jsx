@@ -199,7 +199,7 @@ const CubeDetail = () => {
 										return (
 											<a
 												key={index}
-												href={fileObj.path.startsWith('/') ? `http://localhost:3001${fileObj.path}` : fileObj.path}
+												href={fileObj.path.startsWith('/') ? fileObj.path : fileObj.path}
 												target='_blank'
 												rel='noopener noreferrer'
 												className='flex items-center space-x-3 p-3 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg transition-colors'>

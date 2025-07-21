@@ -37,7 +37,6 @@ COPY . .
 
 # Variables d'environnement pour le build
 ENV NODE_ENV=production
-ENV VITE_API_URL=http://localhost:3001
 
 # Build de l'application React
 RUN npm run build
