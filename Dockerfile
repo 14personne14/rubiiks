@@ -20,15 +20,11 @@ RUN npm install
 # Copier le reste du code
 COPY . .
 
-# Copier et rendre exécutable le script de démarrage
-COPY start.sh ./
-RUN chmod +x start.sh
-
 # Exposer les ports
 EXPOSE 3001 5173
 
 # Créer les dossiers nécessaires (sans corbeille - supprimée)
 RUN mkdir -p data/backups public/cubes public/assets
 
-# Commande de démarrage
-CMD ["./start.sh"]
+# Commande de démarrage directe
+CMD ["sh", "-c", "node server.js & npm run dev -- --host 0.0.0.0 --port 5173"]
