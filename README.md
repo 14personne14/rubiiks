@@ -2,33 +2,72 @@
 
 Une application web moderne développée avec ReactJS pour gérer et organiser votre collection de Rubik's cubes et autres casse-têtes.
 
-## 🎯 Fonctionnalités
+## 📁 Structure du projet
 
-### 🏠 Page d'accueil
-- **Galerie de cartes** : Affichage de tous vos cubes avec leurs photos
-- **Recherche avancée** : Par nom, type, marque, tags, date, notes, difficulté
-- **Filtres intelligents** : Par difficulté, statut de résolution
-- **Statistiques** : Vue d'ensemble de votre collection
-- **Modes d'affichage** : Grille ou liste selon vos préférences
+```
+📁 data/
+  ├── 📄 cubes.json           # Base de données des cubes (format JSON)
+  └── 📁 backups/             # Sauvegardes automatiques
+      └── 📄 cubes-backup-YYYY-MM-DD-HHMM.json
 
-### 🔍 Pages de détails
-- **Photos multiples** : Carrousel d'images avec navigation
-- **Informations complètes** : Date d'obtention, performances, notes
-- **Solutions intégrées** : Liens vers PDFs internes ou sites externes
-- **Tags personnalisés** : Organisation flexible de votre collection
+📁 public/
+  ├── 📁 cubes/               # Organisation par cube
+  │   ├── 📁 cube-1/          # Dossier pour le cube ID=1
+  │   │   ├── 📁 images/      # Images du cube 1
+  │   │   │   ├── 🖼️ photo1.jpg
+  │   │   │   ├── 🖼️ photo2.png
+  │   │   │   └── 🖼️ photo3.webp
+  │   │   └── 📁 solutions/   # Solutions PDF du cube 1
+  │   │       ├── 📄 method-beginner.pdf
+  │   │       ├── 📄 method-cfop.pdf
+  │   │       └── 📄 method-roux.pdf
+  │   │
+  │   ├── 📁 cube-{id}/       # Pattern pour chaque cube
+  │   └── ...
+  │
+  └── 📁 assets/              # Assets globaux (logos, etc.)
+      └── 🖼️ vite.svg
 
-### ⚙️ Interface d'administration
-- **Gestion complète** : Ajouter, modifier, supprimer des cubes
-- **Formulaires intuitifs** : Interface simple pour saisir les informations
-- **Authentification sécurisée** : Accès protégé par mot de passe bcrypt
-- **Aperçu instantané** : Prévisualisation avant publication
+� src/                       # Code source React
+  ├── 📁 components/          # Composants réutilisables
+  ├── 📁 pages/              # Pages de l'application
+  ├── 📁 services/           # Services API
+  ├── 📁 hooks/              # Hooks React personnalisés
+  └── 📁 contexts/           # Contextes React
 
-### 🛡️ Sécurité
-- **Authentification bcrypt** : Hash sécurisé des mots de passe
-- **Rate limiting** : Protection contre les attaques par déni de service
-- **CORS sécurisé** : Restrictions des domaines autorisés
-- **Validation d'entrées** : Sanitisation des données utilisateur
-- **Headers de sécurité** : Protection avec Helmet.js
+📄 server.js                 # Serveur Express.js
+📄 nginx.conf                # Configuration reverse proxy
+📄 docker-compose.yml        # Configuration Docker
+```
+
+### 🗃️ Format des données
+
+```json
+{
+  "id": "1",
+  "name": "Rubik's Cube 3x3 Classique",
+  "type": "3x3",
+  "brand": "Rubik's",
+  "dateObtained": "2024-01-15",
+  "difficulty": "Débutant",
+  "personalBest": "2:45",
+  "averageTime": "3:20",
+  "solved": true,
+  "notes": "Mon premier cube, parfait pour apprendre les bases.",
+  "tags": ["classique", "débutant", "collection"],
+  "files": {
+    "images": ["photo1.jpg", "photo2.png"],
+    "solutions": [
+      {
+        "filename": "method-beginner.pdf",
+        "name": "Méthode débutant",
+        "description": "Méthode couche par couche"
+      }
+    ]
+  },
+  "externalLinks": ["https://speedsolving.com/..."]
+}
+```
 
 ## 🚀 Installation et utilisation
 

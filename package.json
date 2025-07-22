@@ -10,25 +10,24 @@
 		"build": "vite build",
 		"lint": "eslint .",
 		"preview": "vite preview",
-		"docker:build": "docker build -t rubiiks .",
-		"docker:run": "docker run -p 3001:3001 rubiiks",
-		"docker:prod": "docker-compose up -d",
+		"docker:build": "docker build -t rubiiks-app .",
+		"docker:run": "docker run --env-file .env -p 3001:3001 rubiiks-app",
+		"docker:prod": "docker-compose up -d rubiiks-app",
+		"docker:dev": "docker-compose --profile dev up -d rubiiks-dev",
 		"docker:stop": "docker-compose down",
-		"docker:logs": "docker-compose logs -f",
-		"docker:clean": "docker-compose down -v && docker image prune -f"
+		"docker:logs": "docker-compose logs -f rubiiks-app",
+		"docker:logs:dev": "docker-compose logs -f rubiiks-dev",
+		"docker:clean": "docker-compose down -v && docker image prune -f",
+		"docker:deploy": "node -e \"require('child_process').spawn(process.platform === 'win32' ? 'powershell' : 'bash', [process.platform === 'win32' ? './deploy-docker.ps1' : './deploy-docker.sh'], {stdio: 'inherit'})\""
 	},
 	"dependencies": {
 		"bcrypt": "^5.1.1",
-		"cors": "^2.8.5",
 		"dotenv": "^16.6.1",
 		"express": "^4.21.1",
-		"express-rate-limit": "^7.5.1",
-		"helmet": "^7.2.0",
 		"multer": "^2.0.2",
 		"react": "^19.1.0",
 		"react-dom": "^19.1.0",
-		"react-router-dom": "^6.29.0",
-		"validator": "^13.15.15"
+		"react-router-dom": "^6.29.0"
 	},
 	"devDependencies": {
 		"@eslint/js": "^9.30.1",

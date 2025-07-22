@@ -12,13 +12,14 @@ export default defineConfig({
         changeOrigin: true,
         secure: false
       },
-      // Proxy pour les fichiers statiques (images, PDFs)
-      '/images': {
+      // Proxy pour les fichiers cubes (images, PDFs)
+      '/cubes': {
         target: 'http://localhost:3001',
         changeOrigin: true,
         secure: false
       },
-      '/solutions': {
+      // Proxy pour les assets
+      '/assets': {
         target: 'http://localhost:3001',
         changeOrigin: true,
         secure: false

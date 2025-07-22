@@ -9,20 +9,20 @@ import CubeForm from './pages/CubeForm';
 
 function App() {
   return (
-    <AuthProvider>
-      <Router>
-        <Layout>
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/cube/:id" element={<CubeDetail />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/admin" element={<Navigate to="/" replace />} />
-            <Route path="/admin/add" element={<CubeForm />} />
-            <Route path="/admin/edit/:id" element={<CubeForm />} />
-          </Routes>
-        </Layout>
-      </Router>
-    </AuthProvider>
+		<AuthProvider>
+			<Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+				<Layout>
+					<Routes>
+						<Route path='/' element={<Home />} />
+						<Route path='/cube/:id' element={<CubeDetail />} />
+						<Route path='/login' element={<Login />} />
+						<Route path='/admin' element={<Navigate to='/' replace />} />
+						<Route path='/admin/add' element={<CubeForm />} />
+						<Route path='/admin/edit/:id' element={<CubeForm />} />
+					</Routes>
+				</Layout>
+			</Router>
+		</AuthProvider>
   );
 }
 

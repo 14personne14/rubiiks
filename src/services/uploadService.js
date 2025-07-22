@@ -1,6 +1,24 @@
 const API_BASE_URL = '/api';
 
 export const uploadService = {
+  // Récupérer un nouvel ID séquentiel pour un cube
+  async getNewCubeId() {
+    try {
+      const response = await fetch(`${API_BASE_URL}/cubes/new-id`);
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Erreur lors de la génération de l\'ID');
+      }
+      
+      const result = await response.json();
+      return result.id;
+    } catch (error) {
+      console.error('Erreur génération ID cube:', error);
+      throw error;
+    }
+  },
+
   // Récupérer les informations des fichiers existants pour un cube
   async getCubeFiles(cubeId) {
     try {
@@ -18,14 +36,14 @@ export const uploadService = {
     }
   },
 
-  // Upload d'images avec ID du cube pour le nommage
+  // Upload d'images avec nouvelle structure
   async uploadImages(files, cubeId = null) {
     try {
-      console.log('🔄 Upload de', files.length, 'image(s) avec cubeId:', cubeId);
+      console.log('🔄 Upload de', files.length, 'image(s) pour cube:', cubeId);
       
       const formData = new FormData();
       
-      // Ajouter l'ID du cube AVANT les fichiers pour que multer puisse l'utiliser
+      // Ajouter l'ID du cube AVANT les fichiers
       if (cubeId) {
         formData.append('cubeId', cubeId);
       }
@@ -46,7 +64,7 @@ export const uploadService = {
       }
 
       const result = await response.json();
-      console.log('✅ Réponse serveur upload images:', result);
+      console.log('✅ Upload images réussi:', result);
       return result;
     } catch (error) {
       console.error('❌ Erreur upload images:', error);

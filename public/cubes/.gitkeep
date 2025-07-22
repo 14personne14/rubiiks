@@ -1,0 +1,3 @@
+# Ce fichier maintient la structure du dossier cubes dans git
+# Les dossiers cube-{id} contenant les images et solutions uploadées 
+# sont automatiquement créés par l'application mais ignorés par git

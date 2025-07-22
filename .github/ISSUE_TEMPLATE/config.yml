@@ -1,8 +1,0 @@
-blank_issues_enabled: false
-contact_links:
-  - name: 📖 Questions générales
-    url: https://github.com/[VOTRE-USERNAME]/rubiiks/discussions
-    about: Posez vos questions sur l'utilisation du projet
-  - name: 🍴 Fonctionnalités personnalisées
-    url: https://github.com/[VOTRE-USERNAME]/rubiiks/discussions
-    about: Forkez le projet pour vos propres modifications

@@ -1,14 +1,53 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link, Navigate } from 'react-router-dom';
 import { useCubesData } from '../hooks/useCubesData';
 import { useAuth } from '../contexts/AuthContext';
+import { getAllImageUrls, getAllSolutionUrls } from '../utils/fileUtils';
 
 const CubeDetail = () => {
 	const { id } = useParams();
 	const { getCubeById } = useCubesData();
 	const { isAdmin } = useAuth();
+	const [selectedImage, setSelectedImage] = useState(null);
 
 	const cube = getCubeById(id);
+
+	// Gestion des touches du clavier pour naviguer dans les images
+	useEffect(() => {
+		const handleKeyDown = (e) => {
+			if (!selectedImage) return;
+
+			switch (e.key) {
+				case 'Escape':
+					setSelectedImage(null);
+					break;
+				case 'ArrowLeft':
+					if (selectedImage.index > 1) {
+						const newIndex = selectedImage.index - 1;
+						const newUrl = getAllImageUrls(cube)[newIndex - 1];
+						setSelectedImage({ url: newUrl, index: newIndex, total: selectedImage.total });
+					}
+					break;
+				case 'ArrowRight':
+					if (selectedImage.index < selectedImage.total) {
+						const newIndex = selectedImage.index + 1;
+						const newUrl = getAllImageUrls(cube)[newIndex - 1];
+						setSelectedImage({ url: newUrl, index: newIndex, total: selectedImage.total });
+					}
+					break;
+			}
+		};
+
+		if (selectedImage) {
+			document.addEventListener('keydown', handleKeyDown);
+			document.body.style.overflow = 'hidden'; // Empêche le scroll en arrière-plan
+		}
+
+		return () => {
+			document.removeEventListener('keydown', handleKeyDown);
+			document.body.style.overflow = 'unset';
+		};
+	}, [selectedImage, cube]);
 
 	if (!cube) {
 		return (
@@ -71,21 +110,24 @@ const CubeDetail = () => {
 					</div>
 
 					{/* Images */}
-					{cube.images && cube.images.length > 0 && (
+					{getAllImageUrls(cube).length > 0 && (
 						<div className='mb-6'>
 							<h3 className='text-lg font-semibold mb-3 flex items-center'>
 								<span className='mr-2'>🖼️</span>
-								Images ({cube.images.length})
+								Images ({getAllImageUrls(cube).length})
 							</h3>
 							<div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'>
-								{cube.images.map((image, index) => (
-									<div key={index} className='aspect-square bg-gray-100 rounded-lg overflow-hidden'>
+								{getAllImageUrls(cube).map((imageUrl, index) => (
+									<div
+										key={index}
+										className='aspect-square bg-gray-100 rounded-lg overflow-hidden cursor-pointer hover:opacity-90 transition-opacity'
+										onClick={() => setSelectedImage({ url: imageUrl, index: index + 1, total: getAllImageUrls(cube).length })}>
 										<img
-											src={image}
+											src={imageUrl}
 											alt={`${cube.name} - Image ${index + 1}`}
 											className='w-full h-full object-cover'
 											onError={(e) => {
-												e.target.src = `/images/rubiks_cube_placeholder.jpg`;
+												e.target.style.display = 'none';
 											}}
 										/>
 									</div>
@@ -160,10 +202,53 @@ const CubeDetail = () => {
 						<div className='space-y-4'>
 							<h3 className='text-lg font-semibold'>🧩 Solutions</h3>
 
-							{/* Liens de solutions */}
-							{cube.solutionLinks && cube.solutionLinks.length > 0 && (
+							{/* Liens externes */}
+							{cube.externalLinks && cube.externalLinks.length > 0 && (
 								<div className='space-y-3'>
 									<h4 className='font-medium text-gray-900'>🔗 Liens web</h4>
+									{cube.externalLinks.map((link, index) => (
+										<a
+											key={index}
+											href={link}
+											target='_blank'
+											rel='noopener noreferrer'
+											className='flex items-center space-x-3 p-3 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors'>
+											<span className='text-2xl'>🌐</span>
+											<div className='flex-1'>
+												<div className='font-medium text-blue-900'>Voir la solution en ligne</div>
+												<div className='text-sm text-blue-600 break-all'>{link}</div>
+											</div>
+										</a>
+									))}
+								</div>
+							)}
+
+							{/* Fichiers PDF de solutions (nouvelle structure) */}
+							{getAllSolutionUrls(cube).length > 0 && (
+								<div className='space-y-3'>
+									<h4 className='font-medium text-gray-900'>📄 Fichiers PDF</h4>
+									{getAllSolutionUrls(cube).map((solution, index) => (
+										<a
+											key={index}
+											href={solution.url}
+											target='_blank'
+											rel='noopener noreferrer'
+											className='flex items-center space-x-3 p-3 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg transition-colors'>
+											<span className='text-2xl'>📄</span>
+											<div className='flex-1'>
+												<div className='font-medium text-green-900'>{solution.name || solution.filename}</div>
+												{solution.description && <div className='text-sm text-green-600'>{solution.description}</div>}
+												<div className='text-xs text-green-500 mt-1'>Document PDF</div>
+											</div>
+										</a>
+									))}
+								</div>
+							)}
+
+							{/* Anciens formats pour compatibilité */}
+							{cube.solutionLinks && cube.solutionLinks.length > 0 && (
+								<div className='space-y-3'>
+									<h4 className='font-medium text-gray-900'>🔗 Liens web (ancien format)</h4>
 									{cube.solutionLinks.map((link, index) => (
 										<a
 											key={index}
@@ -181,10 +266,10 @@ const CubeDetail = () => {
 								</div>
 							)}
 
-							{/* Fichiers PDF de solutions */}
+							{/* Fichiers PDF de solutions (ancien format) */}
 							{cube.solutionFiles && cube.solutionFiles.length > 0 && (
 								<div className='space-y-3'>
-									<h4 className='font-medium text-gray-900'>📄 Fichiers PDF</h4>
+									<h4 className='font-medium text-gray-900'>📄 Fichiers PDF (ancien format)</h4>
 									{cube.solutionFiles.map((file, index) => {
 										const fileObj =
 											typeof file === 'string'
@@ -232,7 +317,9 @@ const CubeDetail = () => {
 							)}
 
 							{/* Aucune solution */}
-							{(!cube.solutionLinks || cube.solutionLinks.length === 0) &&
+							{(!cube.externalLinks || cube.externalLinks.length === 0) &&
+								(!cube.files?.solutions || cube.files.solutions.length === 0) &&
+								(!cube.solutionLinks || cube.solutionLinks.length === 0) &&
 								(!cube.solutionFiles || cube.solutionFiles.length === 0) &&
 								!cube.solutionLink && (
 									<div className='text-center py-6 text-gray-500'>
@@ -254,6 +341,71 @@ const CubeDetail = () => {
 					)}
 				</div>
 			</div>
+
+			{/* Modal pour afficher l'image en grand */}
+			{selectedImage && (
+				<div
+					className='fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4'
+					onClick={() => setSelectedImage(null)}>
+					<div className='relative max-w-screen-lg max-h-screen-lg'>
+						{/* Bouton de fermeture */}
+						<button
+							onClick={() => setSelectedImage(null)}
+							className='absolute -top-10 right-0 text-white hover:text-gray-300 text-2xl font-bold z-10'
+							aria-label='Fermer'>
+							✕
+						</button>
+
+						{/* Informations sur l'image */}
+						<div className='absolute -top-10 left-0 text-white text-sm'>
+							Image {selectedImage.index} sur {selectedImage.total}
+						</div>
+
+						{/* Image */}
+						<img
+							src={selectedImage.url}
+							alt={`${cube.name} - Image ${selectedImage.index}`}
+							className='max-w-full max-h-full object-contain rounded-lg shadow-2xl'
+							onClick={(e) => e.stopPropagation()}
+						/>
+
+						{/* Navigation entre images */}
+						{selectedImage.total > 1 && (
+							<>
+								{/* Bouton précédent */}
+								{selectedImage.index > 1 && (
+									<button
+										onClick={(e) => {
+											e.stopPropagation();
+											const newIndex = selectedImage.index - 1;
+											const newUrl = getAllImageUrls(cube)[newIndex - 1];
+											setSelectedImage({ url: newUrl, index: newIndex, total: selectedImage.total });
+										}}
+										className='absolute left-4 top-1/2 transform -translate-y-1/2 bg-black bg-opacity-50 text-white rounded-full w-12 h-12 flex items-center justify-center hover:bg-opacity-75 transition-all'
+										aria-label='Image précédente'>
+										‹
+									</button>
+								)}
+
+								{/* Bouton suivant */}
+								{selectedImage.index < selectedImage.total && (
+									<button
+										onClick={(e) => {
+											e.stopPropagation();
+											const newIndex = selectedImage.index + 1;
+											const newUrl = getAllImageUrls(cube)[newIndex - 1];
+											setSelectedImage({ url: newUrl, index: newIndex, total: selectedImage.total });
+										}}
+										className='absolute right-4 top-1/2 transform -translate-y-1/2 bg-black bg-opacity-50 text-white rounded-full w-12 h-12 flex items-center justify-center hover:bg-opacity-75 transition-all'
+										aria-label='Image suivante'>
+										›
+									</button>
+								)}
+							</>
+						)}
+					</div>
+				</div>
+			)}
 		</div>
 	);
 };

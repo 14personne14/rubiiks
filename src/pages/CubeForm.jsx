@@ -3,99 +3,105 @@ import { useParams, useNavigate, useLocation, Navigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext';
 import { useCubesData } from '../hooks/useCubesData';
 import { uploadService } from '../services/uploadService';
+import { getAllImageUrls, getAllSolutionUrls } from '../utils/fileUtils';
 
 const CubeForm = () => {
-  const { id } = useParams();
-  const navigate = useNavigate();
-  const location = useLocation();
-  const { isAdmin, isLoading: authLoading } = useAuth();
-  const { getCubeById, addCube, updateCube, isLoading: cubesLoading, cubes } = useCubesData();
-  
-  const isEditMode = Boolean(id);
-  const existingCube = isEditMode ? getCubeById(id) : null;
+	const { id } = useParams();
+	const navigate = useNavigate();
+	const location = useLocation();
+	const { isAdmin, isLoading: authLoading } = useAuth();
+	const { getCubeById, addCube, updateCube, isLoading: cubesLoading, cubes } = useCubesData();
 
-  const [formData, setFormData] = useState({
-    name: '',
-    type: '',
-    brand: '',
-    dateObtained: '',
-    difficulty: '',
-    personalBest: '',
-    averageTime: '',
-    solved: false,
-    images: [],
-    solutionLinks: [],
-    solutionFiles: [], // Structure: [{path: "/solutions/pdf/...", name: "Mon nom personnalisé"}]
-    notes: '',
-    tags: []
-  });
+	const isEditMode = Boolean(id);
+	const existingCube = isEditMode ? getCubeById(id) : null;
 
-  const [tagInput, setTagInput] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [availableTags, setAvailableTags] = useState([]);
-  const [showTagSuggestions, setShowTagSuggestions] = useState(false);
-  const [uploadingImages, setUploadingImages] = useState(false);
-  const [uploadingSolution, setUploadingSolution] = useState(false);
-  const [newSolutionLink, setNewSolutionLink] = useState('');
+	const [formData, setFormData] = useState({
+		name: '',
+		type: '',
+		brand: '',
+		dateObtained: '',
+		difficulty: '',
+		personalBest: '',
+		averageTime: '',
+		solved: false,
+		images: [],
+		solutionLinks: [],
+		solutionFiles: [], // Structure: [{path: "/solutions/pdf/...", name: "Mon nom personnalisé"}]
+		notes: '',
+		tags: [],
+	});
 
-  useEffect(() => {
-    // Extraire tous les tags existants de tous les cubes
-    if (cubes) {
-      const allTags = cubes.reduce((tags, cube) => {
-        if (cube.tags) {
-          cube.tags.forEach(tag => {
-            if (!tags.includes(tag)) {
-              tags.push(tag);
-            }
-          });
-        }
-        return tags;
-      }, []);
-      setAvailableTags(allTags.sort());
-    }
-  }, [cubes]);
+	const [tagInput, setTagInput] = useState('');
+	const [isSubmitting, setIsSubmitting] = useState(false);
+	const [availableTags, setAvailableTags] = useState([]);
+	const [showTagSuggestions, setShowTagSuggestions] = useState(false);
+	const [uploadingImages, setUploadingImages] = useState(false);
+	const [uploadingSolution, setUploadingSolution] = useState(false);
+	const [newSolutionLink, setNewSolutionLink] = useState('');
 
-  useEffect(() => {
+	useEffect(() => {
+		// Extraire tous les tags existants de tous les cubes
+		if (cubes) {
+			const allTags = cubes.reduce((tags, cube) => {
+				if (cube.tags) {
+					cube.tags.forEach((tag) => {
+						if (!tags.includes(tag)) {
+							tags.push(tag);
+						}
+					});
+				}
+				return tags;
+			}, []);
+			setAvailableTags(allTags.sort());
+		}
+	}, [cubes]);
+
+	useEffect(() => {
 		if (isEditMode && existingCube) {
 			// Normaliser les données pour la compatibilité avec les anciens formats
 			const normalizedCube = {
 				...existingCube,
-				// Convertir imageUrl vers images si nécessaire
-				images: existingCube.images || (existingCube.imageUrl ? [existingCube.imageUrl] : []),
+				// Convertir vers la nouvelle structure files si nécessaire
+				images: existingCube.files?.images
+					? getAllImageUrls(existingCube)
+					: existingCube.images || (existingCube.imageUrl ? [existingCube.imageUrl] : []),
 				// Normaliser solved (peut être isSolved dans les anciens formats)
 				solved: existingCube.solved !== undefined ? existingCube.solved : existingCube.isSolved || false,
 				// S'assurer que tags existe
 				tags: existingCube.tags || [],
+				// Liens externes (nouvelle structure)
+				externalLinks: existingCube.externalLinks || [],
 				// Convertir l'ancien format vers le nouveau
 				solutionLinks:
 					existingCube.solutionLinks ||
 					(existingCube.solutionLink && existingCube.solutionType !== 'pdf' ? [existingCube.solutionLink] : []),
-				solutionFiles:
-					existingCube.solutionFiles ||
-					(existingCube.solutionPdfLink
-						? [
-								{
-									path: existingCube.solutionPdfLink,
-									name: existingCube.solutionPdfLink
+				solutionFiles: existingCube.files?.solutions
+					? getAllSolutionUrls(existingCube).map((sol) => ({ path: sol.url, name: sol.name || sol.filename }))
+					: existingCube.solutionFiles ||
+					  (existingCube.solutionPdfLink
+							? [
+									{
+										path: existingCube.solutionPdfLink,
+										name: existingCube.solutionPdfLink
+											.split('/')
+											.pop()
+											.replace(/\.[^/.]+$/, ''),
+									},
+							  ]
+							: []
+					  ).map((file) => {
+							// Normaliser vers le nouveau format objet si c'est encore une string
+							if (typeof file === 'string') {
+								return {
+									path: file,
+									name: file
 										.split('/')
 										.pop()
 										.replace(/\.[^/.]+$/, ''),
-								},
-						  ]
-						: []
-					).map((file) => {
-						// Normaliser vers le nouveau format objet si c'est encore une string
-						if (typeof file === 'string') {
-							return {
-								path: file,
-								name: file
-									.split('/')
-									.pop()
-									.replace(/\.[^/.]+$/, ''),
-							};
-						}
-						return file;
-					}),
+								};
+							}
+							return file;
+					  }),
 			};
 
 			setFormData(normalizedCube);
@@ -105,10 +111,10 @@ const CubeForm = () => {
 				loadCubeFiles(existingCube.id);
 			}
 		}
-  }, [isEditMode, existingCube]);
+	}, [isEditMode, existingCube]);
 
-  // Fonction pour charger les fichiers existants d'un cube
-  const loadCubeFiles = async (cubeId) => {
+	// Fonction pour charger les fichiers existants d'un cube
+	const loadCubeFiles = async (cubeId) => {
 		try {
 			const fileInfo = await uploadService.getCubeFiles(cubeId);
 			console.log('📁 Fichiers trouvés pour le cube', cubeId, ':', fileInfo);
@@ -128,33 +134,33 @@ const CubeForm = () => {
 		} catch (error) {
 			console.error('Erreur lors du chargement des fichiers:', error);
 		}
-  };
+	};
 
-  if (authLoading || cubesLoading) {
+	if (authLoading || cubesLoading) {
 		return (
 			<div className='flex items-center justify-center min-h-64'>
 				<div className='animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600'></div>
 			</div>
 		);
-  }
+	}
 
-  if (!isAdmin) {
+	if (!isAdmin) {
 		return <Navigate to='/login' state={{ from: { pathname: location.pathname } }} replace />;
-  }
+	}
 
-  if (isEditMode && !existingCube) {
+	if (isEditMode && !existingCube) {
 		return <Navigate to='/admin' replace />;
-  }
+	}
 
-  const handleInputChange = (e) => {
+	const handleInputChange = (e) => {
 		const { name, value, type, checked } = e.target;
 		setFormData((prev) => ({
 			...prev,
 			[name]: type === 'checkbox' ? checked : value,
 		}));
-  };
+	};
 
-  const handleAddTag = (tag = null) => {
+	const handleAddTag = (tag = null) => {
 		const tagToAdd = tag || tagInput.trim();
 		if (tagToAdd && !formData.tags.includes(tagToAdd)) {
 			setFormData((prev) => ({
@@ -164,16 +170,16 @@ const CubeForm = () => {
 			setTagInput('');
 			setShowTagSuggestions(false);
 		}
-  };
+	};
 
-  const removeTag = (tagToRemove) => {
+	const removeTag = (tagToRemove) => {
 		setFormData((prev) => ({
 			...prev,
 			tags: prev.tags.filter((tag) => tag !== tagToRemove),
 		}));
-  };
+	};
 
-  const formatTime = (timeString) => {
+	const formatTime = (timeString) => {
 		if (!timeString) return '';
 
 		// Si c'est déjà au bon format (min:sec), on le garde
@@ -197,47 +203,52 @@ const CubeForm = () => {
 		}
 
 		return timeString;
-  };
+	};
 
-  const handleTimeChange = (e, field) => {
+	const handleTimeChange = (e, field) => {
 		const { value } = e.target;
 		setFormData((prev) => ({
 			...prev,
 			[field]: value,
 		}));
-  };
+	};
 
-  const handleTimeBlur = (e, field) => {
+	const handleTimeBlur = (e, field) => {
 		const { value } = e.target;
 		const formattedTime = formatTime(value);
 		setFormData((prev) => ({
 			...prev,
 			[field]: formattedTime,
 		}));
-  };
+	};
 
-  const filteredTags = availableTags.filter((tag) => tag.toLowerCase().includes(tagInput.toLowerCase()) && !formData.tags.includes(tag));
+	const filteredTags = availableTags.filter((tag) => tag.toLowerCase().includes(tagInput.toLowerCase()) && !formData.tags.includes(tag));
 
-  // Gestion des uploads d'images avec nouveau système de nommage
-  const handleImageUpload = async (e) => {
+	// Gestion des uploads d'images avec nouveau système de nommage
+	const handleImageUpload = async (e) => {
 		const files = e.target.files;
 		if (!files || files.length === 0) return;
 
 		console.log('🔄 Upload de', files.length, 'image(s)');
 		setUploadingImages(true);
 		try {
-			// Pour un nouveau cube, générer un ID définitif maintenant
+			// Pour un nouveau cube, obtenir un ID séquentiel du serveur
 			let cubeId;
 			if (isEditMode) {
 				cubeId = id;
 			} else {
-				// Générer l'ID définitif maintenant pour le nommage cohérent
-				cubeId = Date.now().toString();
-				// Mettre à jour l'ID dans le formData pour qu'il soit utilisé lors de la sauvegarde
-				setFormData((prev) => ({
-					...prev,
-					id: cubeId,
-				}));
+				// Obtenir un ID séquentiel du serveur si pas encore défini
+				if (!formData.id) {
+					cubeId = await uploadService.getNewCubeId();
+					console.log('🆔 Nouvel ID généré par le serveur:', cubeId);
+					// Mettre à jour l'ID dans le formData
+					setFormData((prev) => ({
+						...prev,
+						id: cubeId,
+					}));
+				} else {
+					cubeId = formData.id;
+				}
 			}
 
 			console.log('📋 Cube ID utilisé:', cubeId);
@@ -260,10 +271,10 @@ const CubeForm = () => {
 			// Reset l'input file
 			e.target.value = '';
 		}
-  };
+	};
 
-  // Supprimer une image
-  const handleImageDelete = async (imageIndex, imagePath) => {
+	// Supprimer une image
+	const handleImageDelete = async (imageIndex, imagePath) => {
 		try {
 			// Supprimer le fichier du serveur seulement si c'est un fichier local
 			if (imagePath.startsWith('/images/cubes/')) {
@@ -287,28 +298,31 @@ const CubeForm = () => {
 				images: newImages,
 			}));
 		}
-  };
+	};
 
-  // Gestion de l'upload de solution PDF avec nouveau système de nommage
-  const handleSolutionUpload = async (e) => {
+	// Gestion de l'upload de solution PDF avec nouveau système de nommage
+	const handleSolutionUpload = async (e) => {
 		const files = Array.from(e.target.files);
 		if (files.length === 0) return;
 
 		setUploadingSolution(true);
 		try {
-			// Pour un nouveau cube, utiliser l'ID déjà défini ou le générer
+			// Pour un nouveau cube, obtenir un ID séquentiel du serveur
 			let cubeId;
 			if (isEditMode) {
 				cubeId = id;
 			} else {
-				// Utiliser l'ID déjà défini dans formData ou en générer un nouveau
-				cubeId = formData.id || Date.now().toString();
-				// Mettre à jour l'ID dans le formData
+				// Obtenir un ID séquentiel du serveur si pas encore défini
 				if (!formData.id) {
+					cubeId = await uploadService.getNewCubeId();
+					console.log('🆔 Nouvel ID généré pour PDF:', cubeId);
+					// Mettre à jour l'ID dans le formData
 					setFormData((prev) => ({
 						...prev,
 						id: cubeId,
 					}));
+				} else {
+					cubeId = formData.id;
 				}
 			}
 
@@ -340,10 +354,10 @@ const CubeForm = () => {
 			// Reset l'input file
 			e.target.value = '';
 		}
-  };
+	};
 
-  // Supprimer une solution PDF
-  const handleDeleteSolution = async (solutionFile) => {
+	// Supprimer une solution PDF
+	const handleDeleteSolution = async (solutionFile) => {
 		if (!confirm('Êtes-vous sûr de vouloir supprimer cette solution PDF ?')) {
 			return;
 		}
@@ -363,10 +377,10 @@ const CubeForm = () => {
 			console.error('Erreur suppression solution:', error);
 			alert('Erreur lors de la suppression de la solution');
 		}
-  };
+	};
 
-  // Ajouter un lien de solution
-  const handleAddSolutionLink = () => {
+	// Ajouter un lien de solution
+	const handleAddSolutionLink = () => {
 		if (!newSolutionLink.trim()) return;
 
 		setFormData((prev) => ({
@@ -374,18 +388,18 @@ const CubeForm = () => {
 			solutionLinks: [...(prev.solutionLinks || []), newSolutionLink.trim()],
 		}));
 		setNewSolutionLink('');
-  };
+	};
 
-  // Supprimer un lien de solution
-  const handleDeleteSolutionLink = (linkToDelete) => {
+	// Supprimer un lien de solution
+	const handleDeleteSolutionLink = (linkToDelete) => {
 		setFormData((prev) => ({
 			...prev,
 			solutionLinks: (prev.solutionLinks || []).filter((link) => link !== linkToDelete),
 		}));
-  };
+	};
 
-  // Renommer une solution PDF
-  const handleRenameSolution = (index, newName) => {
+	// Renommer une solution PDF
+	const handleRenameSolution = (index, newName) => {
 		setFormData((prev) => ({
 			...prev,
 			solutionFiles: (prev.solutionFiles || []).map((file, i) => {
@@ -395,9 +409,9 @@ const CubeForm = () => {
 				return file;
 			}),
 		}));
-  };
+	};
 
-  const handleSubmit = async (e) => {
+	const handleSubmit = async (e) => {
 		e.preventDefault();
 		setIsSubmitting(true);
 
@@ -433,9 +447,9 @@ const CubeForm = () => {
 		} finally {
 			setIsSubmitting(false);
 		}
-  };
+	};
 
-  return (
+	return (
 		<div className='space-y-6'>
 			{/* Header */}
 			<div className='flex items-center justify-between'>
@@ -936,7 +950,7 @@ const CubeForm = () => {
 				</form>
 			</div>
 		</div>
-  );
+	);
 };
 
 export default CubeForm;

@@ -1,0 +1,3 @@
+# Ce fichier maintient la structure du dossier backups dans git
+# Les fichiers de sauvegarde sont automatiquement créés par l'application
+# mais peuvent être ignorés par git selon les besoins

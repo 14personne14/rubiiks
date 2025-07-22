@@ -24,19 +24,17 @@ build
 # ===============================
 # 🗂️ DONNÉES ET UPLOADS
 # ===============================
-# Fichiers de données (seront créés dans le container)
-data/cubes.json
-data/corbeille/*
+# Fichiers de données (bind mounts - disponibles via volumes)
+data/
+!data/.gitkeep
 
-# Images uploadées (volumes Docker)
-public/images/cubes/*.jpg
-public/images/cubes/*.jpeg
-public/images/cubes/*.png
-public/images/cubes/*.gif
-public/images/cubes/*.webp
+# Images uploadées (bind mounts - disponibles via volumes)
+public/images/cubes/*
+!public/images/cubes/.gitkeep
 
-# PDFs uploadés (volumes Docker)
-public/solutions/pdf/*.pdf
+# PDFs uploadés (bind mounts - disponibles via volumes)
+public/solutions/pdf/*
+!public/solutions/pdf/.gitkeep
 
 # ===============================
 # 🔐 SÉCURITÉ ET ENVIRONNEMENT

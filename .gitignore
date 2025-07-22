@@ -1,3 +1,7 @@
+# ===============================
+# 🗂️ GITIGNORE RUBIIKS - VERSION PROPRE
+# ===============================
+
 # Logs
 logs
 *.log
@@ -7,6 +11,7 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies
 node_modules
 dist
 dist-ssr
@@ -19,7 +24,15 @@ dist-ssr
 .env.test.local
 .env.production.local
 
-# Uploaded files - Production data
+# Configuration files - Keep example files only
+.env.example
+!.env.example
+
+# Uploaded files - Production data (nouvelle structure)
+public/cubes/cube-*/
+!public/cubes/.gitkeep
+
+# Legacy - Ancienne structure (à supprimer si plus utilisée)
 public/images/cubes/*
 !public/images/cubes/.gitkeep
 public/solutions/pdf/*
@@ -28,12 +41,14 @@ public/solutions/pdf/*
 # Database files
 data/cubes.json
 
-# Trash/Corbeille - Fichiers supprimés
-data/corbeille/
-!data/corbeille/README.md
+# Sauvegardes et données utilisateur
+data/backups/*
+!data/backups/.gitkeep
+*.backup
 
 # Editor directories and files
 .vscode/*
+.vscode
 !.vscode/extensions.json
 .idea
 .DS_Store
@@ -51,6 +66,9 @@ test_*.html
 
 # 🐳 Docker - Ne pas commiter les volumes et données de conteneurs
 docker-compose.override.yml
+docker-compose.minimal.yml
+Dockerfile.old
+Dockerfile.new
 .docker/
 volumes/
 
@@ -58,11 +76,10 @@ volumes/
 *.tmp
 *.temp
 .cache/
-TEST_*.md
-NOUVEAU_*.md
-VALIDATION_*.md
-debug_*.js
-temp_*.json
+
+# 📋 Fichiers de documentation temporaire
+*_TEMP.md
+*_DEBUG.md
 
 # 📊 Fichiers de logs et cache développement
 *.log.txt

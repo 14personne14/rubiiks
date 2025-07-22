@@ -1,110 +1,61 @@
-# ===============================
-# 🐳 DOCKER COMPOSE - RUBIIKS
-# ===============================
-# Configuration complète pour l'application Rubiiks
-
 services:
-  # ===============================
-  # 🎯 APPLICATION RUBIIKS
-  # ===============================
-  rubiiks-app:
+  rubiiks:
     build:
       context: .
       dockerfile: Dockerfile
-      target: production
-    container_name: rubiiks-app
+    container_name: rubiiks
     restart: unless-stopped
     
-    # Variables d'environnement
+    # Variables d'environnement depuis le fichier .env
+    env_file:
+      - .env
+    
+    # Variables d'environnement spécifiques
     environment:
-      - NODE_ENV=production
-      - PORT=3001
-      - ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH:-$2b$10$kZk8qN0.GEQLcU6EOUSp7eleKilxe4feLxFWBRa7901eT3huGUkje}
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173,http://localhost:8080}
-      - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB:-10}
+      - NODE_ENV=development
+      - HOST=0.0.0.0
+      - VITE_API_URL=http://localhost:3001
     
-    # Ports exposés
+    # Exposition des ports pour debug
     ports:
-      - "3001:3001"
+      - "5173:5173"  # Frontend accessible depuis l'extérieur
+      - "3001:3001"  # Backend pour debug temporaire
     
-    # Volumes persistants
+    # Volumes optimisés pour le développement
     volumes:
-      # Données persistantes
-      - rubiiks-data:/app/data
-      # Images uploadées
-      - rubiiks-images:/app/public/images/cubes
-      # PDFs de solutions
-      - rubiiks-pdfs:/app/public/solutions/pdf
-      # Corbeille
-      - rubiiks-trash:/app/data/corbeille
+      # 📁 Code source pour hot reload (ESSENTIEL)
+      - ./src:/app/src
+      
+      # 💾 Persistance des données (ESSENTIEL)
+      - ./data:/app/data
+      
+      # 📂 Fichiers publics (si upload d'images)
+      - ./public:/app/public
+      
+      # ⚙️ Configuration Vite (pour proxy)
+      - ./vite.config.js:/app/vite.config.js
+      
+      # 🚫 Exclure node_modules (CRITIQUE)
+      - /app/node_modules
     
-    # Limits des ressources
+    # Limitations de ressources
     deploy:
       resources:
         limits:
-          memory: 512M
-          cpus: '0.5'
+          memory: 1G
+          cpus: '2.0'
         reservations:
-          memory: 256M
-          cpus: '0.25'
+          memory: 512M
+          cpus: '1.0'
     
-    # Réseau
-    networks:
-      - rubiiks-network
+    # Sécurité
+    security_opt:
+      - no-new-privileges:true
     
-    # Health check
+    # Health check sur le frontend
     healthcheck:
-      test: ["CMD", "node", "-e", "const http = require('http'); const options = { hostname: 'localhost', port: 3001, path: '/api/cubes', timeout: 2000 }; const req = http.request(options, (res) => { process.exit(res.statusCode === 200 ? 0 : 1); }); req.on('error', () => process.exit(1)); req.end();"]
+      test: ["CMD", "curl", "-f", "http://localhost:5173"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
-
-  # ===============================
-  # 🌐 REVERSE PROXY (OPTIONNEL)
-  # ===============================
-  nginx:
-    image: nginx:alpine
-    container_name: rubiiks-nginx
-    restart: unless-stopped
-    
-    ports:
-      - "8080:80"
-    
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - rubiiks-images:/app/public/images/cubes:ro
-      - rubiiks-pdfs:/app/public/solutions/pdf:ro
-    
-    depends_on:
-      - rubiiks-app
-    
-    networks:
-      - rubiiks-network
-    
-    # Commentez ce service si vous n'avez pas besoin de nginx
-
-# ===============================
-# 📦 VOLUMES PERSISTANTS
-# ===============================
-volumes:
-  rubiiks-data:
-    driver: local
-    name: rubiiks-data
-  rubiiks-images:
-    driver: local
-    name: rubiiks-images
-  rubiiks-pdfs:
-    driver: local
-    name: rubiiks-pdfs
-  rubiiks-trash:
-    driver: local
-    name: rubiiks-trash
-
-# ===============================
-# 🌐 RÉSEAUX
-# ===============================
-networks:
-  rubiiks-network:
-    driver: bridge
-    name: rubiiks-network
+      start_period: 20s

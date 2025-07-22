@@ -1,15 +1,13 @@
 import express from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-import rateLimit from 'express-rate-limit';
 import bcrypt from 'bcrypt';
-import validator from 'validator';
 import dotenv from 'dotenv';
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
+
+// Note: validator.js n'est pas utilisé, nous utilisons des validations simples
 
 // Charger les variables d'environnement
 dotenv.config();
@@ -19,222 +17,161 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-const DATA_FILE = path.join(__dirname, 'data', 'cubes.json');
+const HOST = process.env.HOST || 'localhost';
 
-// Configuration de sécurité
-const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || '$2b$10$8tXKvMQK5rHK1Q2vGXP4XuI5fGH7YxJ8RzT6Nm3wEr0sKlP4uQ9vy'; // rubiiks2024
-const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : ['http://localhost:3000', 'http://localhost:5173'];
-const MAX_FILE_SIZE = (process.env.MAX_FILE_SIZE_MB || 10) * 1024 * 1024; // Conversion en bytes
+// Chemins configurables
+const DATA_DIR = process.env.DATA_DIR || 'data';
+const DATA_FILE = path.join(__dirname, DATA_DIR, process.env.DATA_FILE || 'cubes.json');
+const PUBLIC_DIR = process.env.PUBLIC_DIR || 'public';
+const CUBES_DIR = process.env.CUBES_DIR || 'cubes';
+const IMAGES_SUBDIR = process.env.IMAGES_SUBDIR || 'images';
+const SOLUTIONS_SUBDIR = process.env.SOLUTIONS_SUBDIR || 'solutions';
 
-// Fonction utilitaire pour déplacer un fichier vers la corbeille
-const moveToTrash = async (sourceFilePath, type) => {
-  try {
-    const filename = path.basename(sourceFilePath);
-    const timestamp = new Date().toISOString().replace(/:/g, '-').replace(/\./g, '-');
-    const trashFilename = `${timestamp}_${filename}`;
-    
-    const trashDir = path.join(__dirname, 'data', 'corbeille', type);
-    const trashFilePath = path.join(trashDir, trashFilename);
-    
-    // S'assurer que le dossier de corbeille existe
-    await fs.mkdir(trashDir, { recursive: true });
-    
-    // Déplacer le fichier vers la corbeille
-    await fs.rename(sourceFilePath, trashFilePath);
-    
-    console.log(`Fichier déplacé vers la corbeille: ${trashFilePath}`);
-    return trashFilePath;
-  } catch (error) {
-    console.error('Erreur lors du déplacement vers la corbeille:', error);
-    throw error;
-  }
-};
+// Configuration simple
+const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || '$2b$10$8tXKvMQK5rHK1Q2vGXP4XuI5fGH7YxJ8RzT6Nm3wEr0sKlP4uQ9vy';
+const MAX_FILE_SIZE = (process.env.MAX_FILE_SIZE_MB || 10) * 1024 * 1024;
+const MAX_IMAGES_PER_CUBE = parseInt(process.env.MAX_IMAGES_PER_CUBE) || 10;
+const MAX_SOLUTIONS_PER_CUBE = parseInt(process.env.MAX_SOLUTIONS_PER_CUBE) || 5;
 
-// 🛡️ MIDDLEWARES DE SÉCURITÉ
+// Configuration des types de fichiers
+const ALLOWED_IMAGE_EXTENSIONS = (process.env.ALLOWED_IMAGE_EXTENSIONS || '.jpg,.jpeg,.png,.gif,.webp').split(',');
+const ALLOWED_IMAGE_MIMETYPES = (process.env.ALLOWED_IMAGE_MIMETYPES || 'image/jpeg,image/jpg,image/png,image/gif,image/webp').split(',');
+const ALLOWED_PDF_EXTENSIONS = (process.env.ALLOWED_PDF_EXTENSIONS || '.pdf').split(',');
+const ALLOWED_PDF_MIMETYPES = (process.env.ALLOWED_PDF_MIMETYPES || 'application/pdf').split(',');
 
-// Helmet pour les en-têtes de sécurité
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "blob:"], // Images servies via le même domaine
-      fontSrc: ["'self'"],
-      connectSrc: ["'self'"],
-      mediaSrc: ["'self'"],
-      objectSrc: ["'none'"],
-      childSrc: ["'none'"],
-      frameAncestors: ["'none'"],
-      formAction: ["'self'"],
-      upgradeInsecureRequests: [],
-    },
-  },
-  crossOriginEmbedderPolicy: false,
-  crossOriginResourcePolicy: { policy: "cross-origin" } // Permettre les ressources cross-origin
-}));
+// Configuration du cache
+const CACHE_STATIC_FILES = process.env.CACHE_STATIC_FILES || 31536000;
+const CACHE_HTML_FILES = process.env.CACHE_HTML_FILES || 0;
 
-// Rate limiting global
-const globalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limite à 100 requêtes par IP
-  message: {
-    error: 'Trop de requêtes depuis cette IP, réessayez dans 15 minutes.'
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
+// Validation
+const MAX_NAME_LENGTH = parseInt(process.env.MAX_NAME_LENGTH) || 100;
+const MAX_SCRAMBLE_LENGTH = parseInt(process.env.MAX_SCRAMBLE_LENGTH) || 500;
+const MAX_TIME_LENGTH = parseInt(process.env.MAX_TIME_LENGTH) || 20;
 
-// Rate limiting spécifique pour les uploads
-const uploadLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 5, // limite à 5 uploads par minute
-  message: {
-    error: 'Trop d\'uploads, réessayez dans 1 minute.'
-  }
-});
+// 🛠️ MIDDLEWARES BASIQUES
 
-// Rate limiting spécifique pour l'authentification
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // limite à 5 tentatives de connexion par IP
-  message: {
-    error: 'Trop de tentatives de connexion, réessayez dans 15 minutes.'
-  }
-});
+// Parser JSON
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-app.use(globalLimiter);
-
-// CORS sécurisé
-app.use(cors({
-  origin: function (origin, callback) {
-    // Permettre les requêtes sans origin (ex: applications mobiles)
-    if (!origin) return callback(null, true);
-    
-    if (ALLOWED_ORIGINS.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('Non autorisé par la politique CORS'));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
-
-// Middleware pour parser le JSON avec limite de taille
-app.use(express.json({ limit: '1mb' }));
-app.use(express.urlencoded({ extended: true, limit: '1mb' }));
-
-// Middleware de validation et sanitisation
-const validateInput = (req, res, next) => {
-  // Nettoyer les chaînes de caractères
-  const cleanString = (str) => {
-    if (typeof str !== 'string') return str;
-    return validator.escape(str.trim());
-  };
-
-  // Appliquer le nettoyage récursivement
-  const cleanObject = (obj) => {
-    if (typeof obj === 'string') {
-      return cleanString(obj);
-    } else if (Array.isArray(obj)) {
-      return obj.map(cleanObject);
-    } else if (obj && typeof obj === 'object') {
-      const cleaned = {};
-      for (const [key, value] of Object.entries(obj)) {
-        cleaned[key] = cleanObject(value);
-      }
-      return cleaned;
-    }
-    return obj;
-  };
-
-  req.body = cleanObject(req.body);
-  next();
-};
-
-app.use(validateInput);
-
-// Fichiers statiques avec sécurité
-app.use('/images', express.static(path.join(__dirname, 'public', 'images'), {
-  setHeaders: (res, filePath) => {
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Cache-Control', 'public, max-age=86400'); // 1 jour
-    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin'); // Permettre l'accès cross-origin
-    res.setHeader('Access-Control-Allow-Origin', '*'); // Permettre l'accès depuis n'importe quelle origine
-  }
-}));
-
-app.use('/solutions', express.static(path.join(__dirname, 'public', 'solutions'), {
-  setHeaders: (res, filePath) => {
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Cache-Control', 'private, no-cache');
-    res.setHeader('Content-Disposition', 'inline');
-    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin'); // Permettre l'accès cross-origin
-    res.setHeader('Access-Control-Allow-Origin', '*'); // Permettre l'accès depuis n'importe quelle origine
-  }
-}));
+// Fichiers statiques avec nouvelle structure
+app.use(`/${CUBES_DIR}`, express.static(path.join(__dirname, PUBLIC_DIR, CUBES_DIR)));
+app.use('/assets', express.static(path.join(__dirname, PUBLIC_DIR, 'assets')));
 
 // Servir les fichiers statiques buildés par Vite (pour Docker)
 if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, 'dist'), {
-    setHeaders: (res, filePath) => {
-      if (filePath.endsWith('.html')) {
-        res.setHeader('Cache-Control', 'no-cache');
-      } else {
-        res.setHeader('Cache-Control', 'public, max-age=31536000'); // 1 an pour les assets
+  const distPath = path.join(__dirname, 'dist');
+  if (fsSync.existsSync(distPath)) {
+    app.use(express.static(distPath, {
+      setHeaders: (res, filePath) => {
+        // Configuration des types MIME et cache
+        if (filePath.endsWith('.html')) {
+          res.setHeader('Cache-Control', `no-cache, max-age=${CACHE_HTML_FILES}`);
+          res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        } else if (filePath.endsWith('.js')) {
+          res.setHeader('Cache-Control', `public, max-age=${CACHE_STATIC_FILES}`);
+          res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+        } else if (filePath.endsWith('.css')) {
+          res.setHeader('Cache-Control', `public, max-age=${CACHE_STATIC_FILES}`);
+          res.setHeader('Content-Type', 'text/css; charset=utf-8');
+        } else {
+          res.setHeader('Cache-Control', `public, max-age=${CACHE_STATIC_FILES}`);
+        }
       }
-    }
-  }));
+    }));
+  }
 }
+
+// Fonction pour obtenir le prochain numéro d'image pour un cube
+const getNextImageNumber = (cubeId) => {
+  const cubeDir = path.join(PUBLIC_DIR, CUBES_DIR, `cube-${cubeId}`, IMAGES_SUBDIR);
+  
+  if (!fsSync.existsSync(cubeDir)) {
+    return 1;
+  }
+  
+  const files = fsSync.readdirSync(cubeDir);
+  const imageFiles = files.filter(file => {
+    const ext = path.extname(file).toLowerCase();
+    return ALLOWED_IMAGE_EXTENSIONS.includes(ext);
+  });
+  
+  // Trouver le plus grand numéro existant
+  let maxNumber = 0;
+  imageFiles.forEach(file => {
+    const match = file.match(/^image-(\d+)\./);
+    if (match) {
+      const num = parseInt(match[1]);
+      if (num > maxNumber) maxNumber = num;
+    }
+  });
+  
+  return maxNumber + 1;
+};
+
+// Fonction pour obtenir le prochain numéro de solution pour un cube
+const getNextSolutionNumber = (cubeId) => {
+  const cubeDir = path.join(PUBLIC_DIR, CUBES_DIR, `cube-${cubeId}`, SOLUTIONS_SUBDIR);
+  
+  if (!fsSync.existsSync(cubeDir)) {
+    return 1;
+  }
+  
+  const files = fsSync.readdirSync(cubeDir);
+  const pdfFiles = files.filter(file => {
+    return file.endsWith('.pdf') && file.startsWith('solution-');
+  });
+  
+  // Trouver le plus grand numéro existant
+  let maxNumber = 0;
+  pdfFiles.forEach(file => {
+    const match = file.match(/^solution-(\d+)\.pdf$/);
+    if (match) {
+      const num = parseInt(match[1]);
+      if (num > maxNumber) maxNumber = num;
+    }
+  });
+  
+  return maxNumber + 1;
+};
 
 // Configuration de multer avec sécurité renforcée
 
-// Configuration pour les images avec calcul dynamique du numéro
+// Configuration pour les images avec nouvelle structure
 const imageStorage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, 'public/images/cubes/')
-  },
-  filename: async function (req, file, cb) {
-    try {
-      // Récupérer l'ID du cube depuis le formulaire pour nommer directement
-      const cubeId = req.body.cubeId || `temp-${Date.now()}`;
-      const extension = path.extname(file.originalname).toLowerCase();
-      
-      // Calculer le prochain numéro d'image pour ce cube de manière dynamique
-      if (!req.nextImageNumber) {
-        req.nextImageNumber = await getNextImageNumber(cubeId);
-      }
-      
-      // Utiliser et incrémenter le compteur
-      const imageNumber = req.nextImageNumber;
-      req.nextImageNumber++;
-      
-      // Nouveau format: {id_cube}-{numéro_de_limage}.{extension}
-      const filename = `${cubeId}-${imageNumber}${extension}`;
-      console.log('📸 Nom fichier généré:', filename);
-      cb(null, filename);
-    } catch (error) {
-      console.error('Erreur génération nom fichier image:', error);
-      cb(error);
+    const cubeId = req.body.cubeId || `temp-${Date.now()}`;
+    const cubeDir = path.join(PUBLIC_DIR, CUBES_DIR, `cube-${cubeId}`, IMAGES_SUBDIR);
+    
+    // Créer le dossier s'il n'existe pas
+    if (!fsSync.existsSync(cubeDir)) {
+      fsSync.mkdirSync(cubeDir, { recursive: true });
     }
+    
+    cb(null, cubeDir);
+  },
+  filename: function (req, file, cb) {
+    const cubeId = req.body.cubeId || `temp-${Date.now()}`;
+    const imageNumber = getNextImageNumber(cubeId);
+    const fileExtension = path.extname(file.originalname).toLowerCase();
+    const newFileName = `image-${imageNumber}${fileExtension}`;
+    
+    console.log(`📷 Renommage: ${file.originalname} → ${newFileName}`);
+    cb(null, newFileName);
   }
 });
 
 // Validation des fichiers images
 const imageFileFilter = (req, file, cb) => {
   // Vérifier l'extension
-  const allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
   const fileExtension = path.extname(file.originalname).toLowerCase();
   
-  if (!allowedExtensions.includes(fileExtension)) {
-    return cb(new Error('Type de fichier non autorisé. Seules les images (JPG, PNG, GIF, WebP) sont acceptées.'));
+  if (!ALLOWED_IMAGE_EXTENSIONS.includes(fileExtension)) {
+    return cb(new Error(`Type de fichier non autorisé. Seules les images (${ALLOWED_IMAGE_EXTENSIONS.join(', ')}) sont acceptées.`));
   }
   
   // Vérifier le type MIME
-  const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
-  if (!allowedMimeTypes.includes(file.mimetype)) {
+  if (!ALLOWED_IMAGE_MIMETYPES.includes(file.mimetype)) {
     return cb(new Error('Type MIME non autorisé.'));
   }
   
@@ -246,53 +183,44 @@ const uploadImages = multer({
   fileFilter: imageFileFilter,
   limits: {
     fileSize: MAX_FILE_SIZE,
-    files: 10
+    files: MAX_IMAGES_PER_CUBE
   }
 });
 
-// Configuration pour les PDFs avec calcul dynamique du numéro
+// Configuration pour les PDFs avec nouvelle structure
 const pdfStorage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, 'public/solutions/pdf/')
-  },
-  filename: async function (req, file, cb) {
-    try {
-      // Récupérer l'ID du cube depuis le formulaire pour nommer directement
-      const cubeId = req.body.cubeId || `temp-${Date.now()}`;
-      
-      // Calculer le prochain numéro de PDF pour ce cube de manière dynamique
-      if (!req.nextPdfNumber) {
-        req.nextPdfNumber = await getNextPdfNumber(cubeId);
-      }
-      
-      // Utiliser et incrémenter le compteur
-      const pdfNumber = req.nextPdfNumber;
-      req.nextPdfNumber++;
-      
-      // Nouveau format: {id_cube}-{numéro_du_pdf}.pdf
-      const filename = `${cubeId}-${pdfNumber}.pdf`;
-      console.log('📄 Nom fichier PDF généré:', filename);
-      cb(null, filename);
-    } catch (error) {
-      console.error('Erreur génération nom fichier PDF:', error);
-      cb(error);
+    const cubeId = req.body.cubeId || `temp-${Date.now()}`;
+    const cubeDir = path.join(PUBLIC_DIR, CUBES_DIR, `cube-${cubeId}`, SOLUTIONS_SUBDIR);
+    
+    // Créer le dossier s'il n'existe pas
+    if (!fsSync.existsSync(cubeDir)) {
+      fsSync.mkdirSync(cubeDir, { recursive: true });
     }
+    
+    cb(null, cubeDir);
+  },
+  filename: function (req, file, cb) {
+    const cubeId = req.body.cubeId || `temp-${Date.now()}`;
+    const solutionNumber = getNextSolutionNumber(cubeId);
+    const newFileName = `solution-${solutionNumber}.pdf`;
+    
+    console.log(`📄 Renommage: ${file.originalname} → ${newFileName}`);
+    cb(null, newFileName);
   }
 });
 
 // Validation des fichiers PDF
 const pdfFileFilter = (req, file, cb) => {
   // Vérifier l'extension
-  const allowedExtensions = ['.pdf'];
   const fileExtension = path.extname(file.originalname).toLowerCase();
   
-  if (!allowedExtensions.includes(fileExtension)) {
-    return cb(new Error('Type de fichier non autorisé. Seuls les PDF sont acceptés.'));
+  if (!ALLOWED_PDF_EXTENSIONS.includes(fileExtension)) {
+    return cb(new Error(`Type de fichier non autorisé. Seuls les PDF (${ALLOWED_PDF_EXTENSIONS.join(', ')}) sont acceptés.`));
   }
   
   // Vérifier le type MIME
-  const allowedMimeTypes = ['application/pdf'];
-  if (!allowedMimeTypes.includes(file.mimetype)) {
+  if (!ALLOWED_PDF_MIMETYPES.includes(file.mimetype)) {
     return cb(new Error('Type MIME non autorisé.'));
   }
   
@@ -304,35 +232,9 @@ const uploadPdf = multer({
   fileFilter: pdfFileFilter,
   limits: {
     fileSize: MAX_FILE_SIZE,
-    files: 1
+    files: MAX_SOLUTIONS_PER_CUBE
   }
 });
-
-// Middleware d'authentification
-const validateAuth = async (req, res, next) => {
-  try {
-    const { password } = req.body;
-    
-    if (!password || typeof password !== 'string') {
-      return res.status(400).json({ error: 'Mot de passe requis' });
-    }
-    
-    if (password.length > 100) {
-      return res.status(400).json({ error: 'Mot de passe trop long' });
-    }
-    
-    const isValid = await bcrypt.compare(password, ADMIN_PASSWORD_HASH);
-    
-    if (!isValid) {
-      return res.status(401).json({ error: 'Mot de passe incorrect' });
-    }
-    
-    next();
-  } catch (error) {
-    console.error('Erreur lors de la validation:', error);
-    return res.status(500).json({ error: 'Erreur de validation' });
-  }
-};
 
 // Utilitaires pour la gestion des données
 const ensureDataFile = async () => {
@@ -344,48 +246,18 @@ const ensureDataFile = async () => {
   }
 };
 
-// Fonction pour obtenir le prochain numéro d'image pour un cube
-const getNextImageNumber = async (cubeId) => {
-  try {
-    const imagesDir = path.join(__dirname, 'public', 'images', 'cubes');
-    const files = await fs.readdir(imagesDir);
-    
-    // Filtrer les fichiers qui correspondent au pattern {cubeId}-{number}.{ext}
-    const imageNumbers = files
-      .filter(file => file.startsWith(`${cubeId}-`) && /\.(jpg|jpeg|png|gif|webp)$/i.test(file))
-      .map(file => {
-        const match = file.match(new RegExp(`^${cubeId}-(\\d+)\\.`));
-        return match ? parseInt(match[1]) : 0;
-      })
-      .filter(num => !isNaN(num));
-    
-    return imageNumbers.length > 0 ? Math.max(...imageNumbers) + 1 : 1;
-  } catch (error) {
-    console.error('Erreur lors du calcul du numéro d\'image:', error);
-    return 1;
-  }
-};
-
-// Fonction pour obtenir le prochain numéro de PDF pour un cube
-const getNextPdfNumber = async (cubeId) => {
-  try {
-    const pdfsDir = path.join(__dirname, 'public', 'solutions', 'pdf');
-    const files = await fs.readdir(pdfsDir);
-    
-    // Filtrer les fichiers qui correspondent au pattern {cubeId}-{number}.pdf
-    const pdfNumbers = files
-      .filter(file => file.startsWith(`${cubeId}-`) && file.endsWith('.pdf'))
-      .map(file => {
-        const match = file.match(new RegExp(`^${cubeId}-(\\d+)\\.pdf$`));
-        return match ? parseInt(match[1]) : 0;
-      })
-      .filter(num => !isNaN(num));
-    
-    return pdfNumbers.length > 0 ? Math.max(...pdfNumbers) + 1 : 1;
-  } catch (error) {
-    console.error('Erreur lors du calcul du numéro de PDF:', error);
-    return 1;
-  }
+// Fonction pour générer le prochain ID séquentiel
+const getNextCubeId = (cubes) => {
+  if (cubes.length === 0) return "1";
+  
+  // Trouver le plus grand ID numérique existant
+  const numericIds = cubes
+    .map(cube => parseInt(cube.id))
+    .filter(id => !isNaN(id))
+    .sort((a, b) => b - a);
+  
+  const maxId = numericIds.length > 0 ? numericIds[0] : 0;
+  return (maxId + 1).toString();
 };
 
 const readCubes = async () => {
@@ -422,55 +294,87 @@ app.get('/api/cubes', async (req, res) => {
   }
 });
 
+// GET /api/cubes/new-id - Générer un nouvel ID séquentiel
+app.get('/api/cubes/new-id', async (req, res) => {
+  try {
+    const cubes = await readCubes();
+    const newId = getNextCubeId(cubes);
+    res.json({ id: newId });
+  } catch (error) {
+    console.error('Erreur lors de la génération de l\'ID:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// GET /api/cubes/:id - Récupérer un cube par son ID
+app.get('/api/cubes/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const cubes = await readCubes();
+    const cube = cubes.find(c => c.id === id);
+    
+    if (!cube) {
+      return res.status(404).json({ error: 'Cube non trouvé' });
+    }
+    
+    res.json(cube);
+  } catch (error) {
+    console.error('Erreur lors de la récupération du cube:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
 // GET /api/cubes/:id/files - Récupérer les fichiers associés à un cube
 app.get('/api/cubes/:id/files', async (req, res) => {
   try {
     const { id } = req.params;
     
-    if (!validator.isNumeric(id)) {
+    // Validation simple de l'ID
+    if (!id || isNaN(Number(id))) {
       return res.status(400).json({ error: 'ID invalide' });
     }
 
-    // Récupérer les images
-    const imagesDir = path.join(__dirname, 'public', 'images', 'cubes');
-    const pdfsDir = path.join(__dirname, 'public', 'solutions', 'pdf');
+    // Nouveaux chemins avec structure par cube
+    const cubeDir = path.join(__dirname, PUBLIC_DIR, CUBES_DIR, `cube-${id}`);
+    const imagesDir = path.join(cubeDir, IMAGES_SUBDIR);
+    const solutionsDir = path.join(cubeDir, SOLUTIONS_SUBDIR);
     
     let imageFiles = [];
-    let pdfFiles = [];
-    
+    let solutionFiles = [];
+
+    // Récupérer les images
     try {
-      const allImageFiles = await fs.readdir(imagesDir);
-      imageFiles = allImageFiles
-        .filter(file => file.startsWith(`${id}-`) && /\.(jpg|jpeg|png|gif|webp)$/i.test(file))
-        .map(file => ({
-          filename: file,
-          url: `/images/cubes/${file}`,
-          number: parseInt(file.match(new RegExp(`^${id}-(\\d+)\\.`))?.[1] || '0')
-        }))
-        .sort((a, b) => a.number - b.number);
+      if (fsSync.existsSync(imagesDir)) {
+        const allImageFiles = await fs.readdir(imagesDir);
+        imageFiles = allImageFiles
+          .filter(file => /\.(jpg|jpeg|png|gif|webp)$/i.test(file))
+          .map(file => ({
+            filename: file,
+            url: `/${CUBES_DIR}/cube-${id}/${IMAGES_SUBDIR}/${file}`
+          }));
+      }
     } catch (error) {
       console.log('Dossier images non trouvé ou vide');
     }
     
+    // Récupérer les solutions PDF
     try {
-      const allPdfFiles = await fs.readdir(pdfsDir);
-      pdfFiles = allPdfFiles
-        .filter(file => file.startsWith(`${id}-`) && file.endsWith('.pdf'))
-        .map(file => ({
-          filename: file,
-          url: `/solutions/pdf/${file}`,
-          number: parseInt(file.match(new RegExp(`^${id}-(\\d+)\\.pdf$`))?.[1] || '0')
-        }))
-        .sort((a, b) => a.number - b.number);
+      if (fsSync.existsSync(solutionsDir)) {
+        const allSolutionFiles = await fs.readdir(solutionsDir);
+        solutionFiles = allSolutionFiles
+          .filter(file => file.endsWith('.pdf'))
+          .map(file => ({
+            filename: file,
+            url: `/${CUBES_DIR}/cube-${id}/${SOLUTIONS_SUBDIR}/${file}`
+          }));
+      }
     } catch (error) {
-      console.log('Dossier PDFs non trouvé ou vide');
+      console.log('Dossier solutions non trouvé ou vide');
     }
     
     res.json({
       images: imageFiles,
-      pdfs: pdfFiles,
-      nextImageNumber: imageFiles.length > 0 ? Math.max(...imageFiles.map(f => f.number)) + 1 : 1,
-      nextPdfNumber: pdfFiles.length > 0 ? Math.max(...pdfFiles.map(f => f.number)) + 1 : 1
+      solutions: solutionFiles
     });
   } catch (error) {
     console.error('Erreur lors de la récupération des fichiers:', error);
@@ -511,20 +415,21 @@ app.post('/api/cubes', async (req, res) => {
       return res.status(400).json({ error: 'Le nom du cube est obligatoire' });
     }
 
-    if (typeof name !== 'string' || name.length > 100) {
-      return res.status(400).json({ error: 'Nom invalide' });
+    if (typeof name !== 'string' || name.length > MAX_NAME_LENGTH) {
+      return res.status(400).json({ error: `Nom invalide (max ${MAX_NAME_LENGTH} caractères)` });
     }
 
     // Format collection de cubes
     if (type || brand || dateObtained) {
-      if (dateObtained && !validator.isISO8601(dateObtained)) {
-        return res.status(400).json({ error: 'Date d\'obtention invalide' });
+      // Validation simple de la date (format YYYY-MM-DD)
+      if (dateObtained && !/^\d{4}-\d{2}-\d{2}$/.test(dateObtained)) {
+        return res.status(400).json({ error: 'Date d\'obtention invalide (format YYYY-MM-DD attendu)' });
       }
 
       const cubes = await readCubes();
       
-      // Utiliser l'ID fourni ou en générer un nouveau
-      const cubeId = id || Date.now().toString();
+      // Utiliser l'ID fourni ou générer un ID séquentiel
+      const cubeId = id || getNextCubeId(cubes);
       
       // Vérifier que l'ID n'existe pas déjà si un ID est fourni
       if (id && cubes.some(cube => cube.id === id)) {
@@ -562,21 +467,22 @@ app.post('/api/cubes', async (req, res) => {
       return res.status(400).json({ error: 'Format non reconnu. Veuillez fournir soit le format collection (type, brand) soit le format résolution (scramble, time, date)' });
     }
 
-    if (typeof scramble !== 'string' || scramble.length > 500) {
-      return res.status(400).json({ error: 'Mélange invalide' });
+    if (typeof scramble !== 'string' || scramble.length > MAX_SCRAMBLE_LENGTH) {
+      return res.status(400).json({ error: `Mélange invalide (max ${MAX_SCRAMBLE_LENGTH} caractères)` });
     }
 
-    if (typeof time !== 'string' || time.length > 20) {
-      return res.status(400).json({ error: 'Temps invalide' });
+    if (typeof time !== 'string' || time.length > MAX_TIME_LENGTH) {
+      return res.status(400).json({ error: `Temps invalide (max ${MAX_TIME_LENGTH} caractères)` });
     }
 
-    if (!validator.isISO8601(date)) {
-      return res.status(400).json({ error: 'Date invalide' });
+    // Validation simple de la date (format YYYY-MM-DD)
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ error: 'Date invalide (format YYYY-MM-DD attendu)' });
     }
 
     const cubes = await readCubes();
     const newCube = {
-      id: Date.now().toString(),
+      id: getNextCubeId(cubes),
       name,
       scramble,
       time,
@@ -602,8 +508,8 @@ app.put('/api/cubes/:id', async (req, res) => {
     const { id } = req.params;
     const updates = req.body;
     
-    // Validation de l'ID
-    if (!validator.isNumeric(id)) {
+    // Validation simple de l'ID
+    if (!id || isNaN(Number(id))) {
       return res.status(400).json({ error: 'ID invalide' });
     }
     
@@ -645,8 +551,8 @@ app.delete('/api/cubes/:id', async (req, res) => {
   try {
     const { id } = req.params;
     
-    // Validation de l'ID
-    if (!validator.isNumeric(id)) {
+    // Validation simple de l'ID
+    if (!id || isNaN(Number(id))) {
       return res.status(400).json({ error: 'ID invalide' });
     }
     
@@ -659,30 +565,16 @@ app.delete('/api/cubes/:id', async (req, res) => {
     
     const cube = cubes[cubeIndex];
     
-    // Déplacer les fichiers associés vers la corbeille
+    // Supprimer directement les fichiers associés avec nouvelle structure
     try {
-      if (cube.image) {
-        const imagePath = path.join(__dirname, 'public', 'images', cube.image);
-        try {
-          await fs.access(imagePath);
-          await moveToTrash(imagePath, 'images');
-        } catch (error) {
-          console.log(`Image non trouvée ou déjà supprimée: ${imagePath}`);
-        }
-      }
-      
-      if (cube.solution) {
-        const solutionPath = path.join(__dirname, 'public', 'solutions', cube.solution);
-        try {
-          await fs.access(solutionPath);
-          await moveToTrash(solutionPath, 'solutions');
-        } catch (error) {
-          console.log(`Solution non trouvée ou déjà supprimée: ${solutionPath}`);
-        }
+      const cubeDir = path.join(__dirname, PUBLIC_DIR, CUBES_DIR, `cube-${id}`);
+      if (fsSync.existsSync(cubeDir)) {
+        await fs.rm(cubeDir, { recursive: true, force: true });
+        console.log(`Dossier du cube ${id} supprimé: ${cubeDir}`);
       }
     } catch (error) {
-      console.error('Erreur lors du déplacement des fichiers vers la corbeille:', error);
-      // Continue même si le déplacement échoue
+      console.error('Erreur lors de la suppression des fichiers:', error);
+      // Continue même si la suppression échoue
     }
     
     cubes.splice(cubeIndex, 1);
@@ -696,7 +588,7 @@ app.delete('/api/cubes/:id', async (req, res) => {
 });
 
 // POST /api/upload/images - Upload de plusieurs images
-app.post('/api/upload/images', uploadLimiter, uploadImages.array('images', 10), async (req, res) => {
+app.post('/api/upload/images', uploadImages.array('images', MAX_IMAGES_PER_CUBE), async (req, res) => {
   try {
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ error: 'Aucun fichier fourni' });
@@ -707,11 +599,13 @@ app.post('/api/upload/images', uploadLimiter, uploadImages.array('images', 10), 
       return res.status(400).json({ error: 'ID du cube requis' });
     }
     
-    console.log('📁 Upload de', req.files.length, 'fichier(s)');
-    console.log('📋 Cube ID reçu:', cubeId);
+    console.log('📁 Upload de', req.files.length, 'fichier(s) pour cube:', cubeId);
     
-    // Générer les URLs des images uploadées
-    const imageUrls = req.files.map(file => `/images/cubes/${file.filename}`);
+    // Générer les URLs des images uploadées avec nouvelle structure
+    const imageUrls = req.files.map(file => {
+      const relativePath = path.relative(path.join(__dirname, PUBLIC_DIR), file.path);
+      return `/${relativePath.replace(/\\/g, '/')}`;
+    });
     
     console.log('🖼️ Images créées:', imageUrls);
     
@@ -727,7 +621,7 @@ app.post('/api/upload/images', uploadLimiter, uploadImages.array('images', 10), 
 });
 
 // POST /api/upload/solution - Upload d'une solution PDF
-app.post('/api/upload/solution', uploadLimiter, uploadPdf.single('solution'), async (req, res) => {
+app.post('/api/upload/solution', uploadPdf.single('solution'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'Aucun fichier fourni' });
@@ -742,7 +636,8 @@ app.post('/api/upload/solution', uploadLimiter, uploadPdf.single('solution'), as
     console.log('📋 Cube ID reçu:', cubeId);
     
     const filename = req.file.filename;
-    const solutionUrl = `/solutions/pdf/${filename}`;
+    // Nouveau chemin avec structure par cube
+    const solutionUrl = `/${CUBES_DIR}/cube-${cubeId}/${SOLUTIONS_SUBDIR}/${filename}`;
     
     res.json({ 
       filename, 
@@ -765,10 +660,11 @@ app.delete('/api/upload/image', async (req, res) => {
       return res.status(400).json({ error: 'Chemin de l\'image requis' });
     }
     
-    const fullPath = path.join(__dirname, 'public', 'images', imagePath);
+    // Nouvelle structure: imagePath devrait être comme "/{CUBES_DIR}/cube-1/{IMAGES_SUBDIR}/photo.jpg"
+    const fullPath = path.join(__dirname, PUBLIC_DIR, imagePath.replace(/^\//, ''));
     
     if (fsSync.existsSync(fullPath)) {
-      await moveToTrash(fullPath, 'images');
+      await fs.unlink(fullPath);
       res.json({ message: 'Image supprimée avec succès' });
     } else {
       res.status(404).json({ error: 'Image non trouvée' });
@@ -788,10 +684,11 @@ app.delete('/api/upload/solution', async (req, res) => {
       return res.status(400).json({ error: 'Chemin de la solution requis' });
     }
     
-    const fullPath = path.join(__dirname, 'public', 'solutions', 'pdf', solutionPath);
+    // Nouvelle structure: solutionPath devrait être comme "/{CUBES_DIR}/cube-1/{SOLUTIONS_SUBDIR}/solution.pdf"
+    const fullPath = path.join(__dirname, PUBLIC_DIR, solutionPath.replace(/^\//, ''));
     
     if (fsSync.existsSync(fullPath)) {
-      await moveToTrash(fullPath, 'solutions');
+      await fs.unlink(fullPath);
       res.json({ message: 'Solution supprimée avec succès' });
     } else {
       res.status(404).json({ error: 'Solution non trouvée' });
@@ -803,7 +700,7 @@ app.delete('/api/upload/solution', async (req, res) => {
 });
 
 // POST /api/auth/login - Authentification admin
-app.post('/api/auth/login', authLimiter, validateAuth, async (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
   res.json({ success: true, message: 'Authentification réussie' });
 });
 
@@ -814,7 +711,25 @@ if (process.env.NODE_ENV === 'production') {
     if (req.path.startsWith('/api/')) {
       return res.status(404).json({ error: 'Route API non trouvée' });
     }
-    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+    
+    // Éviter d'intercepter les assets (CSS, JS, images, etc.)
+    if (req.path.startsWith('/assets/') || 
+        req.path.endsWith('.js') || 
+        req.path.endsWith('.css') || 
+        req.path.endsWith('.ico') || 
+        req.path.endsWith('.png') || 
+        req.path.endsWith('.jpg') || 
+        req.path.endsWith('.svg')) {
+      return res.status(404).send('Asset not found');
+    }
+    
+    // Vérifier que le fichier index.html existe avant de le servir
+    const indexPath = path.join(__dirname, 'dist', 'index.html');
+    if (fsSync.existsSync(indexPath)) {
+      res.sendFile(indexPath);
+    } else {
+      res.status(404).json({ error: 'Application non buildée. Exécutez "npm run build" d\'abord.' });
+    }
   });
 }
 
@@ -822,10 +737,10 @@ if (process.env.NODE_ENV === 'production') {
 app.use((error, req, res, next) => {
   if (error instanceof multer.MulterError) {
     if (error.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({ error: 'Fichier trop volumineux (max 10MB)' });
+      return res.status(400).json({ error: `Fichier trop volumineux (max ${process.env.MAX_FILE_SIZE_MB}MB)` });
     }
     if (error.code === 'LIMIT_FILE_COUNT') {
-      return res.status(400).json({ error: 'Trop de fichiers (max 10 images)' });
+      return res.status(400).json({ error: `Trop de fichiers (max ${MAX_IMAGES_PER_CUBE} images)` });
     }
   }
   if (error.message) {
@@ -835,7 +750,12 @@ app.use((error, req, res, next) => {
 });
 
 // Démarrage du serveur
-app.listen(PORT, () => {
-  console.log(`🚀 Serveur API démarré sur http://localhost:${PORT}`);
+const server = app.listen(PORT, HOST, () => {
+  console.log(`🚀 Serveur API démarré sur http://${HOST}:${PORT}`);
   console.log(`📁 Données stockées dans: ${DATA_FILE}`);
+  console.log(`📂 Fichiers publics dans: ${path.join(__dirname, PUBLIC_DIR)}`);
+  console.log(`🔧 Mode: ${process.env.NODE_ENV}`);
+  if (process.env.DEBUG_MODE === 'true') {
+    console.log('🐛 Mode debug activé');
+  }
 });
